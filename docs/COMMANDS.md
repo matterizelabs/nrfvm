@@ -1,0 +1,47 @@
+# Commands
+
+## Targets
+
+- `-s` or `sdk`: SDK domain via `nrfutil sdk-manager`
+- `-n` or `nrfutil`: nrfutil command/plugin domain
+
+Default target is SDK.
+
+## Command list
+
+- `install`, `i`
+- `use`, `u`
+- `list`, `ls`
+- `remote`, `r`
+- `current`, `c`
+- `status`, `st`
+- `config`, `cfg`
+
+## Version shorthand
+
+- `nrfvm 2.9.0` => `nrfvm -s use 2.9.0`
+- `nrfvm sdk@2.9.0` => `nrfvm -s use 2.9.0`
+- `nrfvm nrfutil@sdk-manager=1.11.0` => `nrfvm -n use sdk-manager=1.11.0`
+
+## Plugin bootstrap
+
+If `sdk-manager` is missing and an SDK command is requested, `nrfvm` prompts:
+
+`Required nrfutil plugin 'sdk-manager' is missing. Install now? [y/N]`
+
+If accepted, it runs:
+
+`nrfutil install sdk-manager`
+
+## Config keys
+
+- `default_target`
+- `remote_cache_ttl`
+- `auto_install_plugins`
+
+Example:
+
+```bash
+nrfvm config set default_target nrfutil
+nrfvm config list
+```

@@ -1,0 +1,33 @@
+#compdef nrfvm
+
+local -a commands
+commands=(
+  'install:Install target version'
+  'use:Activate target version'
+  'list:List installed targets'
+  'remote:List remote targets'
+  'current:Show current targets'
+  'status:Show status'
+  'config:Configuration'
+  'help:Show help'
+  'i:Install target version'
+  'u:Activate target version'
+  'ls:List installed targets'
+  'r:List remote targets'
+  'c:Show current targets'
+  'st:Show status'
+  'cfg:Configuration'
+)
+
+_arguments \
+  '1:target or command:(-s -n sdk nrfutil ${commands%%:*})' \
+  '2:command:(install use list remote current status config help i u ls r c st cfg)' \
+  '*::arg:->args'
+
+case $state in
+  args)
+    if [[ ${words[2]} == "config" || ${words[2]} == "cfg" ]]; then
+      _values 'config actions' list show set unset
+    fi
+  ;;
+esac

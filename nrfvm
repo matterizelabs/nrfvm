@@ -1,0 +1,555 @@
+#!/usr/bin/env bash
+
+NRFVM_VERSION="0.1.0"
+NRFVM_DIR="${NRFVM_DIR:-$HOME/.nrfvm}"
+NRFVM_CONFIG_FILE="$NRFVM_DIR/config"
+NRFVM_STATE_DIR="$NRFVM_DIR/state"
+
+_NRFVM_VERBOSE=0
+
+_nrfvm_is_zsh() {
+  [ -n "${ZSH_VERSION:-}" ]
+}
+
+_nrfvm_is_bash() {
+  [ -n "${BASH_VERSION:-}" ]
+}
+
+_nrfvm_is_supported_shell() {
+  _nrfvm_is_bash || _nrfvm_is_zsh
+}
+
+_nrfvm_is_sourced() {
+  if _nrfvm_is_bash; then
+    [ "${BASH_SOURCE[0]}" != "$0" ]
+    return
+  fi
+  if _nrfvm_is_zsh; then
+    case $ZSH_EVAL_CONTEXT in
+      *:file) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+  return 1
+}
+
+_nrfvm_err() {
+  printf "nrfvm: %s\n" "$1" >&2
+}
+
+_nrfvm_info() {
+  printf "%s\n" "$1"
+}
+
+_nrfvm_mkdirs() {
+  mkdir -p "$NRFVM_DIR" "$NRFVM_STATE_DIR" "$NRFVM_DIR/cache"
+}
+
+_nrfvm_set_state() {
+  local key="$1"
+  local value="$2"
+  _nrfvm_mkdirs
+  printf "%s\n" "$value" > "$NRFVM_STATE_DIR/$key"
+}
+
+_nrfvm_get_state() {
+  local key="$1"
+  if [ -f "$NRFVM_STATE_DIR/$key" ]; then
+    cat "$NRFVM_STATE_DIR/$key"
+  fi
+}
+
+_nrfvm_load_config() {
+  NRFVM_DEFAULT_TARGET="sdk"
+  NRFVM_REMOTE_CACHE_TTL="3600"
+  NRFVM_AUTO_INSTALL_PLUGINS="prompt"
+  if [ -f "$NRFVM_CONFIG_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$NRFVM_CONFIG_FILE"
+  fi
+}
+
+_nrfvm_save_config() {
+  _nrfvm_mkdirs
+  cat > "$NRFVM_CONFIG_FILE" <<EOF
+NRFVM_DEFAULT_TARGET="${NRFVM_DEFAULT_TARGET}"
+NRFVM_REMOTE_CACHE_TTL="${NRFVM_REMOTE_CACHE_TTL}"
+NRFVM_AUTO_INSTALL_PLUGINS="${NRFVM_AUTO_INSTALL_PLUGINS}"
+EOF
+}
+
+_nrfvm_preflight() {
+  if ! _nrfvm_is_supported_shell; then
+    _nrfvm_err "unsupported shell. Use bash or zsh."
+    _nrfvm_info "Run nrfvm from a bash or zsh session."
+    return 1
+  fi
+
+  if ! command -v nrfutil >/dev/null 2>&1; then
+    _nrfvm_err "nrfutil is not in PATH."
+    _nrfvm_info "Install nrfutil first: https://docs.nordicsemi.com/"
+    _nrfvm_info "Then verify with: nrfutil --version"
+    return 1
+  fi
+
+  return 0
+}
+
+_nrfvm_requires_sourced() {
+  if _nrfvm_is_sourced; then
+    return 0
+  fi
+
+  _nrfvm_err "this command must run in a sourced shell to persist environment changes."
+  _nrfvm_info "Add to your rc file: source /path/to/nrfvm"
+  _nrfvm_info "Then open a new shell and retry."
+  return 1
+}
+
+_nrfvm_prompt_yes_no() {
+  local prompt="$1"
+  local answer=""
+  printf "%s [y/N]: " "$prompt" >&2
+  IFS= read -r answer || true
+  case "$answer" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_nrfvm_has_nrfutil_command() {
+  local name="$1"
+  nrfutil "$name" --help >/dev/null 2>&1
+}
+
+_nrfvm_ensure_plugin() {
+  local plugin="$1"
+  local plugin_spec="$plugin"
+  if [ -n "${2:-}" ]; then
+    plugin_spec="${plugin}=$2"
+  fi
+
+  if _nrfvm_has_nrfutil_command "$plugin"; then
+    return 0
+  fi
+
+  if ! _nrfvm_prompt_yes_no "Required nrfutil plugin '$plugin' is missing. Install now?"; then
+    _nrfvm_err "cannot continue without '$plugin'."
+    _nrfvm_info "Install manually with: nrfutil install $plugin_spec"
+    return 1
+  fi
+
+  if ! nrfutil install "$plugin_spec"; then
+    _nrfvm_err "failed installing plugin '$plugin_spec'."
+    return 1
+  fi
+
+  if ! _nrfvm_has_nrfutil_command "$plugin"; then
+    _nrfvm_err "plugin '$plugin' still unavailable after install."
+    return 1
+  fi
+
+  return 0
+}
+
+_nrfvm_run_sdk_manager() {
+  local action="$1"
+  shift
+  if ! _nrfvm_ensure_plugin "sdk-manager"; then
+    return 1
+  fi
+
+  local tried=0
+  local rc=1
+  case "$action" in
+    install)
+      nrfutil sdk-manager install "$@" >/dev/null 2>&1
+      rc=$?
+      tried=1
+      if [ $rc -ne 0 ]; then
+        nrfutil sdk-manager sdk install "$@"
+        rc=$?
+      else
+        nrfutil sdk-manager install "$@"
+      fi
+      ;;
+    list)
+      nrfutil sdk-manager list "$@" >/dev/null 2>&1
+      rc=$?
+      tried=1
+      if [ $rc -ne 0 ]; then
+        nrfutil sdk-manager sdk list "$@"
+        rc=$?
+      else
+        nrfutil sdk-manager list "$@"
+      fi
+      ;;
+    use)
+      nrfutil sdk-manager use "$@" >/dev/null 2>&1
+      rc=$?
+      tried=1
+      if [ $rc -ne 0 ]; then
+        nrfutil sdk-manager sdk use "$@"
+        rc=$?
+      else
+        nrfutil sdk-manager use "$@"
+      fi
+      ;;
+    remote)
+      nrfutil sdk-manager list-remote "$@" >/dev/null 2>&1
+      rc=$?
+      tried=1
+      if [ $rc -ne 0 ]; then
+        nrfutil sdk-manager sdk list-remote "$@"
+        rc=$?
+      else
+        nrfutil sdk-manager list-remote "$@"
+      fi
+      ;;
+    *)
+      _nrfvm_err "unknown sdk action '$action'."
+      return 1
+      ;;
+  esac
+
+  if [ $tried -eq 1 ] && [ $rc -ne 0 ]; then
+    _nrfvm_err "sdk-manager command mapping failed for '$action'."
+    _nrfvm_info "Check plugin help: nrfutil sdk-manager --help"
+    return 1
+  fi
+  return 0
+}
+
+_nrfvm_use_sdk() {
+  local version="$1"
+  if [ -z "$version" ]; then
+    _nrfvm_err "usage: nrfvm use <version>"
+    return 1
+  fi
+  _nrfvm_requires_sourced || return 1
+
+  if ! _nrfvm_run_sdk_manager use "$version"; then
+    _nrfvm_info "Attempting install+use for SDK version $version"
+    _nrfvm_run_sdk_manager install "$version" || return 1
+    _nrfvm_run_sdk_manager use "$version" || return 1
+  fi
+
+  export NRFVM_SDK_VERSION="$version"
+  _nrfvm_set_state "current-sdk" "$version"
+  _nrfvm_info "Now using SDK version $version"
+}
+
+_nrfvm_install_sdk() {
+  local version="$1"
+  if [ -z "$version" ]; then
+    _nrfvm_err "usage: nrfvm install <version>"
+    return 1
+  fi
+  _nrfvm_run_sdk_manager install "$version"
+}
+
+_nrfvm_list_sdk() {
+  _nrfvm_run_sdk_manager list
+}
+
+_nrfvm_remote_sdk() {
+  if _nrfvm_ensure_plugin "sdk-manager"; then
+    if _nrfvm_run_sdk_manager remote; then
+      return 0
+    fi
+  fi
+  nrfutil search sdk
+}
+
+_nrfvm_install_nrfutil_target() {
+  local spec="$1"
+  if [ -z "$spec" ]; then
+    _nrfvm_err "usage: nrfvm -n install <plugin[=version]>"
+    return 1
+  fi
+  nrfutil install "$spec"
+}
+
+_nrfvm_use_nrfutil_target() {
+  local spec="$1"
+  if [ -z "$spec" ]; then
+    _nrfvm_err "usage: nrfvm -n use <plugin[=version]>"
+    return 1
+  fi
+  _nrfvm_requires_sourced || return 1
+  _nrfvm_set_state "current-nrfutil" "$spec"
+  export NRFVM_NRFUTIL_SELECTION="$spec"
+  _nrfvm_info "Selected nrfutil target $spec"
+}
+
+_nrfvm_list_nrfutil_target() {
+  nrfutil list
+}
+
+_nrfvm_remote_nrfutil_target() {
+  local q="${1:-}"
+  nrfutil search "$q"
+}
+
+_nrfvm_current() {
+  local target="$1"
+  case "$target" in
+    sdk)
+      local sdk_cur
+      sdk_cur="$(_nrfvm_get_state "current-sdk")"
+      if [ -n "$sdk_cur" ]; then
+        _nrfvm_info "Current SDK: $sdk_cur"
+      else
+        _nrfvm_info "Current SDK: (none)"
+      fi
+      ;;
+    nrfutil)
+      local n_cur
+      n_cur="$(_nrfvm_get_state "current-nrfutil")"
+      if [ -n "$n_cur" ]; then
+        _nrfvm_info "Current nrfutil target: $n_cur"
+      else
+        _nrfvm_info "Current nrfutil target: (none)"
+      fi
+      ;;
+    *)
+      _nrfvm_current sdk
+      _nrfvm_current nrfutil
+      ;;
+  esac
+}
+
+_nrfvm_status() {
+  _nrfvm_info "nrfvm version: $NRFVM_VERSION"
+  _nrfvm_info "nrfutil path: $(command -v nrfutil)"
+  _nrfvm_info "nrfutil version: $(nrfutil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  _nrfvm_info "config dir: $NRFVM_DIR"
+  _nrfvm_current
+}
+
+_nrfvm_config() {
+  local action="${1:-list}"
+  local key="${2:-}"
+  local value="${3:-}"
+
+  _nrfvm_load_config
+
+  case "$action" in
+    list|show)
+      _nrfvm_info "NRFVM_DEFAULT_TARGET=$NRFVM_DEFAULT_TARGET"
+      _nrfvm_info "NRFVM_REMOTE_CACHE_TTL=$NRFVM_REMOTE_CACHE_TTL"
+      _nrfvm_info "NRFVM_AUTO_INSTALL_PLUGINS=$NRFVM_AUTO_INSTALL_PLUGINS"
+      ;;
+    set)
+      case "$key" in
+        default_target)
+          NRFVM_DEFAULT_TARGET="$value"
+          ;;
+        remote_cache_ttl)
+          NRFVM_REMOTE_CACHE_TTL="$value"
+          ;;
+        auto_install_plugins)
+          NRFVM_AUTO_INSTALL_PLUGINS="$value"
+          ;;
+        *)
+          _nrfvm_err "unknown config key '$key'"
+          return 1
+          ;;
+      esac
+      _nrfvm_save_config
+      _nrfvm_info "Updated $key"
+      ;;
+    unset)
+      case "$key" in
+        default_target) NRFVM_DEFAULT_TARGET="sdk" ;;
+        remote_cache_ttl) NRFVM_REMOTE_CACHE_TTL="3600" ;;
+        auto_install_plugins) NRFVM_AUTO_INSTALL_PLUGINS="prompt" ;;
+        *)
+          _nrfvm_err "unknown config key '$key'"
+          return 1
+          ;;
+      esac
+      _nrfvm_save_config
+      _nrfvm_info "Unset $key"
+      ;;
+    *)
+      _nrfvm_err "usage: nrfvm config [list|show|set|unset]"
+      return 1
+      ;;
+  esac
+}
+
+_nrfvm_help() {
+  cat <<'EOF'
+nrfvm - nRF version manager wrapper around nrfutil
+
+Usage:
+  nrfvm [-s|-n] <command> [args]
+  nrfvm <sdk-version>
+
+Targets:
+  -s            SDK target (default)
+  -n            nrfutil plugin target
+  sdk           explicit SDK target selector
+  nrfutil       explicit nrfutil target selector
+
+Commands:
+  i, install    Install target version
+  u, use        Activate/select target version
+  ls, list      List installed versions/commands
+  r, remote     List available remote versions/commands
+  c, current    Show active selections
+  st, status    Show health/status
+  cfg, config   Get/set config values
+  help          Show this message
+
+Examples:
+  nrfvm 2.9.0
+  nrfvm -s install 2.9.0
+  nrfvm -n install sdk-manager=1.11.0
+  nrfvm -n list
+EOF
+}
+
+_nrfvm_handle_sdk() {
+  local cmd="$1"
+  shift
+  case "$cmd" in
+    i|install) _nrfvm_install_sdk "$@" ;;
+    u|use) _nrfvm_use_sdk "$@" ;;
+    ls|list) _nrfvm_list_sdk "$@" ;;
+    r|remote) _nrfvm_remote_sdk "$@" ;;
+    c|current) _nrfvm_current sdk ;;
+    st|status) _nrfvm_status ;;
+    cfg|config) _nrfvm_config "$@" ;;
+    help|--help|-h|"") _nrfvm_help ;;
+    *)
+      _nrfvm_err "unknown SDK command '$cmd'"
+      _nrfvm_help
+      return 1
+      ;;
+  esac
+}
+
+_nrfvm_handle_nrfutil() {
+  local cmd="$1"
+  shift
+  case "$cmd" in
+    i|install) _nrfvm_install_nrfutil_target "$@" ;;
+    u|use) _nrfvm_use_nrfutil_target "$@" ;;
+    ls|list) _nrfvm_list_nrfutil_target "$@" ;;
+    r|remote) _nrfvm_remote_nrfutil_target "$@" ;;
+    c|current) _nrfvm_current nrfutil ;;
+    st|status) _nrfvm_status ;;
+    cfg|config) _nrfvm_config "$@" ;;
+    help|--help|-h|"") _nrfvm_help ;;
+    *)
+      _nrfvm_err "unknown nrfutil command '$cmd'"
+      _nrfvm_help
+      return 1
+      ;;
+  esac
+}
+
+_nrfvm_parse_shorthand() {
+  local token="$1"
+  if printf "%s" "$token" | grep -Eq '^sdk@[A-Za-z0-9._-]+$'; then
+    printf "sdk:%s" "${token#sdk@}"
+    return 0
+  fi
+  if printf "%s" "$token" | grep -Eq '^nrfutil@[A-Za-z0-9._-]+(=[A-Za-z0-9._-]+)?$'; then
+    printf "nrfutil:%s" "${token#nrfutil@}"
+    return 0
+  fi
+  if printf "%s" "$token" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,3}([._-][A-Za-z0-9]+)?$'; then
+    printf "sdk:%s" "$token"
+    return 0
+  fi
+  return 1
+}
+
+nrfvm() {
+  _nrfvm_preflight || return 1
+  _nrfvm_load_config
+
+  local target="$NRFVM_DEFAULT_TARGET"
+  local first="${1:-}"
+
+  case "$first" in
+    -s) target="sdk"; shift ;;
+    -n) target="nrfutil"; shift ;;
+    sdk) target="sdk"; shift ;;
+    nrfutil) target="nrfutil"; shift ;;
+  esac
+
+  local cmd="${1:-}"
+  shift 2>/dev/null || true
+
+  local parsed=""
+  if [ -n "$cmd" ] && parsed="$(_nrfvm_parse_shorthand "$cmd")"; then
+    local parsed_target="${parsed%%:*}"
+    local parsed_value="${parsed#*:}"
+    if [ "$parsed_target" = "sdk" ]; then
+      _nrfvm_handle_sdk use "$parsed_value"
+      return $?
+    fi
+    _nrfvm_handle_nrfutil use "$parsed_value"
+    return $?
+  fi
+
+  case "$target" in
+    sdk) _nrfvm_handle_sdk "$cmd" "$@" ;;
+    nrfutil) _nrfvm_handle_nrfutil "$cmd" "$@" ;;
+    *)
+      _nrfvm_err "invalid target '$target'"
+      return 1
+      ;;
+  esac
+}
+
+_nrfvm_register_completion() {
+  if command -v complete >/dev/null 2>&1; then
+    complete -F _nrfvm_bash_completion nrfvm 2>/dev/null || true
+    return
+  fi
+  if _nrfvm_is_zsh; then
+    autoload -Uz bashcompinit 2>/dev/null || return
+    bashcompinit 2>/dev/null || return
+    complete -F _nrfvm_bash_completion nrfvm 2>/dev/null || true
+  fi
+}
+
+_nrfvm_bash_completion() {
+  local cur prev
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  local commands="install use list remote current status config help i u ls r c st cfg"
+  local targets="-s -n sdk nrfutil"
+  local config_actions="list show set unset"
+  local config_keys="default_target remote_cache_ttl auto_install_plugins"
+
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=( $(compgen -W "$targets $commands" -- "$cur") )
+    return
+  fi
+
+  if [ "$prev" = "config" ] || [ "$prev" = "cfg" ]; then
+    COMPREPLY=( $(compgen -W "$config_actions" -- "$cur") )
+    return
+  fi
+
+  if [ "$prev" = "set" ] || [ "$prev" = "unset" ]; then
+    COMPREPLY=( $(compgen -W "$config_keys" -- "$cur") )
+    return
+  fi
+
+  COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+}
+
+_nrfvm_register_completion
+
+if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
+  nrfvm "$@"
+fi
