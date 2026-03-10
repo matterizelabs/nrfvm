@@ -227,6 +227,16 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "tilde install-dir input is expanded to absolute path" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source"'
+  [ "$status" -eq 0 ]
+  run bash -c 'expected="$HOME/office/ncs/source"; [ "$(cat "$NRFUTIL_FAKE_CONFIG_FILE")" = "$expected" ]'
+  [ "$status" -eq 0 ]
+  run bash -c 'expected="sdk-manager config install-dir set $HOME/office/ncs/source"; grep -F "$expected" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
 @test "version shorthand normalizes to v-prefix and registers SDK" {
   _write_fake_nrfutil
   run bash -c '. ./nrfvm; nrfvm 2.9.0'

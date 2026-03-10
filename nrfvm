@@ -199,9 +199,9 @@ _nrfvm_prompt_install_dir() {
   local default_dir="$1"
   local chosen=""
 
-  _nrfvm_info ""
-  _nrfvm_info "First-time SDK/toolchain location setup"
-  _nrfvm_info "Choose where sdk-manager installs SDKs and toolchains."
+  printf "\n" >&2
+  printf "%s\n" "First-time SDK/toolchain location setup" >&2
+  printf "%s\n" "Choose where sdk-manager installs SDKs and toolchains." >&2
   printf "Install directory [%s]: " "$default_dir" >&2
   IFS= read -r chosen || true
 
