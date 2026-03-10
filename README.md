@@ -1,32 +1,75 @@
 # nrfvm
 
-`nrfvm` is a Bash wrapper around `nrfutil` for SDK and plugin version workflows.
+`nrfvm` is a source-able Bash wrapper around `nrfutil` for nRF SDK and nrfutil
+plugin version workflows.
 
-## What it does
+This project is intentionally modeled after `espvm` ergonomics:
 
-- Mirrors `espvm`-style UX with short aliases and version shorthand.
-- Manages both:
-  - SDK target (via `nrfutil sdk-manager` plugin)
-  - nrfutil plugin target (via `nrfutil install/list/search/...`)
-- Requires being sourced for `use` commands so environment changes persist.
+- short aliases (`i`, `u`, `ls`, `r`, `st`, ...)
+- version-first invocation (`nrfvm 2.9.0`)
+- shell-aware activation behavior
 
-## Preflight behavior
+## Why this project exists
 
-Before dispatching commands, `nrfvm` checks:
+`nrfutil` is the backend of truth, but direct plugin CLI usage is not always
+ergonomic for day-to-day switching and team onboarding. `nrfvm` adds a stable,
+opinionated frontend that:
 
-1. Shell is supported (`bash` or `zsh`)
-2. `nrfutil` is available in `PATH`
+- enforces a preflight check before command dispatch
+- keeps a single, consistent command surface for users
+- handles missing plugin bootstrap interactively
+- keeps shell activation semantics explicit and safe
 
-If `nrfutil` is missing, `nrfvm` stops and asks you to install it first.
+## Project status
+
+The repository is in early bootstrap phase (`0.1.x`) and focuses on core parity:
+
+- `install`, `use`, `list`, `remote`, `current`, `status`, `config`
+- SDK domain and nrfutil plugin domain
+- Linux and macOS with bash/zsh
+
+## Runtime model
+
+`nrfvm` is designed to be sourced so `use` commands can persist environment
+changes in the current shell session.
+
+At command entry, preflight checks always run:
+
+1. Current shell is supported (`bash` or `zsh`)
+2. `nrfutil` exists in `PATH`
+
+If `nrfutil` is missing, `nrfvm` fails fast with install guidance.
+
+## Repository layout
+
+- `nrfvm`: main shell implementation and command dispatcher
+- `install.sh`: installer for local and online (raw GitHub) distribution
+- `completions/nrfvm.bash`: bash completion
+- `completions/_nrfvm`: zsh completion
+- `docs/COMMANDS.md`: command and alias contract
+- `docs/TROUBLESHOOTING.md`: common failures and fixes
+- `tests/nrfvm.bats`: initial Bats test coverage
 
 ## Install
+
+Online installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matterizelabs/nrfvm/main/install.sh | bash
+```
+
+Local installer (from repo checkout):
 
 ```bash
 ./install.sh
 ```
 
-This installs `nrfvm` to `~/.local/share/nrfvm/nrfvm`, copies an executable to
-`~/.local/bin/nrfvm`, and appends source lines to `~/.bashrc` and `~/.zshrc`.
+Installer behavior:
+
+- installs runtime script to `~/.local/share/nrfvm/nrfvm`
+- copies executable shim to `~/.local/bin/nrfvm`
+- installs completion assets under `~/.local/share/nrfvm/completions`
+- appends source/completion lines to `~/.bashrc` and `~/.zshrc` idempotently
 
 Open a new shell after installation.
 
@@ -37,10 +80,12 @@ nrfvm [-s|-n] <command> [args]
 nrfvm <sdk-version>
 ```
 
-- `-s`: SDK target (default)
-- `-n`: nrfutil plugin target
+Targets:
 
-### Commands
+- `-s` or `sdk`: SDK domain (default)
+- `-n` or `nrfutil`: nrfutil plugin domain
+
+Core commands:
 
 - `install` (`i`)
 - `use` (`u`)
@@ -50,7 +95,7 @@ nrfvm <sdk-version>
 - `status` (`st`)
 - `config` (`cfg`)
 
-### Examples
+Examples:
 
 ```bash
 # SDK
@@ -63,4 +108,60 @@ nrfvm -n install sdk-manager=1.11.0
 nrfvm -n list
 ```
 
-See `docs/COMMANDS.md` for full command behavior.
+## Backend behavior for developers
+
+SDK commands route through `nrfutil sdk-manager` and use compatibility probing.
+If the plugin is missing, `nrfvm` prompts and can install it via:
+
+```bash
+nrfutil install sdk-manager
+```
+
+The adapter isolates top-level UX from backend command drift between plugin
+versions.
+
+## Local development
+
+Prerequisites:
+
+- `bash`
+- `nrfutil`
+- optional for quality gates: `shellcheck`, `shfmt`, `bats`
+
+Quick loop:
+
+```bash
+# run directly in current shell
+source ./nrfvm
+nrfvm status
+
+# lint/syntax
+bash -n nrfvm
+bash -n install.sh
+shellcheck nrfvm install.sh
+
+# tests
+bats tests/nrfvm.bats
+```
+
+## State and config
+
+By default, state is stored in `~/.nrfvm` (override with `NRFVM_DIR`).
+
+- config: `~/.nrfvm/config`
+- state: `~/.nrfvm/state/*`
+
+Config keys currently supported:
+
+- `default_target`
+- `remote_cache_ttl`
+- `auto_install_plugins`
+
+## Contributing notes
+
+- Keep shell code portable for bash and zsh execution paths.
+- Maintain fast-fail preflight behavior.
+- Preserve source-able semantics for env-mutating commands.
+- Prefer stable top-level UX over backend-specific command naming.
+
+See `docs/COMMANDS.md` and `docs/TROUBLESHOOTING.md` before changing CLI behavior.
