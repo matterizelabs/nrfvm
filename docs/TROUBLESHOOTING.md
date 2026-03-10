@@ -53,3 +53,14 @@ Symptom:
 `nrfvm` normalizes plain versions to a `v` prefix automatically. If you call
 `nrfutil sdk-manager` directly, use `v` prefixed versions (for example
 `v3.2.3`).
+
+## west command not found after use
+
+`nrfvm use <version>` now auto-activates toolchain shell env in the current
+session. If `west` is still missing, verify the toolchain environment command:
+
+`nrfutil sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh`
+
+If it fails, inspect available toolchains:
+
+`nrfutil sdk-manager toolchain list`

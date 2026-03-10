@@ -8,6 +8,13 @@ setup() {
   mkdir -p "$HOME"
   export NRFVM_DIR="$TEST_ROOT/nrfvm-state"
   export NRFUTIL_FAKE_LOG="$TEST_ROOT/nrfutil.log"
+  export NRFUTIL_FAKE_TOOLCHAIN_BIN="$TEST_ROOT/toolchain/bin"
+  mkdir -p "$NRFUTIL_FAKE_TOOLCHAIN_BIN"
+  cat > "$NRFUTIL_FAKE_TOOLCHAIN_BIN/west" <<'EOF'
+#!/usr/bin/env bash
+echo "west 0.0.test"
+EOF
+  chmod +x "$NRFUTIL_FAKE_TOOLCHAIN_BIN/west"
   : > "$NRFUTIL_FAKE_LOG"
 }
 
@@ -46,7 +53,20 @@ case "$1" in
         if [ "${2:-}" = "--help" ]; then
           exit 0
         fi
-        # Return no installed SDKs in this fake.
+        shift
+        if [ "${1:-}" = "--styling" ]; then
+          shift 2
+        fi
+        _query="${1:-}"
+
+        if [ -n "${NRFUTIL_FAKE_INSTALLED_VERSION:-}" ] && {
+          [ -z "$_query" ] || [ "$_query" = "$NRFUTIL_FAKE_INSTALLED_VERSION" ];
+        }; then
+          echo "SDK Type  SDK Version  SDK Status  Toolchain Status"
+          echo "nrf       ${NRFUTIL_FAKE_INSTALLED_VERSION}  Installed   Installed"
+        else
+          echo "No SDKs installed"
+        fi
         ;;
       search)
         if [ "${2:-}" = "--help" ]; then
@@ -59,6 +79,29 @@ case "$1" in
           exit 0
         fi
         echo "sdk uninstall ${2:-}"
+        ;;
+      toolchain)
+        shift
+        case "$1" in
+          env)
+            if [ "${2:-}" = "--help" ]; then
+              exit 0
+            fi
+            echo "export PATH=\"${NRFUTIL_FAKE_TOOLCHAIN_BIN}:\$PATH\""
+            echo "export NRFUTIL_FAKE_ENV_ACTIVATED=1"
+            ;;
+          list)
+            if [ "${2:-}" = "--help" ]; then
+              exit 0
+            fi
+            if [ -n "${NRFUTIL_FAKE_INSTALLED_VERSION:-}" ]; then
+              echo "Toolchain ${NRFUTIL_FAKE_INSTALLED_VERSION} Installed"
+            fi
+            ;;
+          *)
+            exit 1
+            ;;
+        esac
         ;;
       sdk)
         shift
@@ -146,6 +189,26 @@ EOF
   [[ "$output" == *"Now using SDK version v2.9.0"* ]]
   run bash -c 'grep -F "sdk-manager install v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
+  run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v2.9.0 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager sdk register v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c '. ./nrfvm; nrfvm 2.9.0 >/dev/null; command -v west >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "use skips install when sdk is already installed" {
+  _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Now using SDK version v3.2.3"* ]]
+  run bash -c '! grep -F "sdk-manager install v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c 'grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3 >/dev/null; west --version >/dev/null'
   [ "$status" -eq 0 ]
 }

@@ -32,8 +32,9 @@ SDK versions are normalized to a leading `v` when omitted.
 
 1. Normalize version to `v*`
 2. Install the SDK if it is missing
-3. Run `nrfutil sdk-manager sdk register <version>` when available
-4. Persist selected version in `nrfvm` state
+3. Evaluate `nrfutil sdk-manager toolchain env --ncs-version <version> --as-script sh`
+4. Run `nrfutil sdk-manager sdk register <version>` when available
+5. Persist selected version in `nrfvm` state
 
 ## Plugin bootstrap
 

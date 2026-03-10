@@ -248,11 +248,46 @@ _nrfvm_run_sdk_manager() {
 _nrfvm_sdk_is_installed() {
   local version="$1"
   local out=""
+
+  out="$(nrfutil sdk-manager list --styling never "$version" 2>/dev/null || nrfutil sdk-manager list "$version" 2>/dev/null || true)"
+  case "$out" in
+    *"$version"*Installed*) return 0 ;;
+    *"$version"*installed*) return 0 ;;
+  esac
+
   out="$(nrfutil --json sdk-manager list "$version" 2>/dev/null || true)"
   case "$out" in
-    *"\"sdkVersion\":\"$version\""*) return 0 ;;
+    *"\"sdkVersion\":\"$version\""*"\"installed\""*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+_nrfvm_activate_toolchain_env() {
+  local version="$1"
+  local env_script=""
+
+  if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
+    _nrfvm_err "failed to resolve toolchain environment for $version"
+    _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
+    return 1
+  fi
+
+  if [ -z "$env_script" ]; then
+    _nrfvm_err "empty toolchain environment script for $version"
+    return 1
+  fi
+
+  if ! eval "$env_script"; then
+    _nrfvm_err "failed to activate toolchain environment for $version"
+    return 1
+  fi
+
+  if ! command -v west >/dev/null 2>&1; then
+    _nrfvm_warn "toolchain environment activated but 'west' is not in PATH"
+    _nrfvm_info "Inspect with: nrfutil sdk-manager toolchain env --ncs-version $version --as-script sh"
+  fi
+
+  return 0
 }
 
 _nrfvm_use_sdk() {
@@ -268,6 +303,8 @@ _nrfvm_use_sdk() {
     _nrfvm_info "SDK version $version is not installed, installing now"
     _nrfvm_run_sdk_manager install "$version" || return 1
   fi
+
+  _nrfvm_activate_toolchain_env "$version" || return 1
 
   if ! _nrfvm_run_sdk_manager register "$version"; then
     _nrfvm_warn "unable to register SDK $version automatically"
