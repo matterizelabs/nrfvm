@@ -43,3 +43,13 @@ If your installed `sdk-manager` version uses different verbs than expected, run:
 `nrfutil sdk-manager --help`
 
 Then adjust your command invocation accordingly.
+
+## SDK version format errors
+
+Symptom:
+
+`Version number must start with a 'v'`
+
+`nrfvm` normalizes plain versions to a `v` prefix automatically. If you call
+`nrfutil sdk-manager` directly, use `v` prefixed versions (for example
+`v3.2.3`).

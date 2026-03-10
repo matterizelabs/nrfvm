@@ -41,6 +41,10 @@ _nrfvm_info() {
   printf "%s\n" "$1"
 }
 
+_nrfvm_warn() {
+  printf "nrfvm: %s\n" "$1" >&2
+}
+
 _nrfvm_mkdirs() {
   mkdir -p "$NRFVM_DIR" "$NRFVM_STATE_DIR" "$NRFVM_DIR/cache"
 }
@@ -152,6 +156,30 @@ _nrfvm_ensure_plugin() {
   return 0
 }
 
+_nrfvm_normalize_sdk_version() {
+  local version="$1"
+  if [ -z "$version" ]; then
+    printf "%s" "$version"
+    return
+  fi
+
+  case "$version" in
+    v*) printf "%s" "$version" ;;
+    [0-9]*) printf "v%s" "$version" ;;
+    *) printf "%s" "$version" ;;
+  esac
+}
+
+_nrfvm_sdk_has_top_level() {
+  local cmd="$1"
+  nrfutil sdk-manager "$cmd" --help >/dev/null 2>&1
+}
+
+_nrfvm_sdk_has_nested() {
+  local cmd="$1"
+  nrfutil sdk-manager sdk "$cmd" --help >/dev/null 2>&1
+}
+
 _nrfvm_run_sdk_manager() {
   local action="$1"
   shift
@@ -159,51 +187,51 @@ _nrfvm_run_sdk_manager() {
     return 1
   fi
 
-  local tried=0
-  local rc=1
   case "$action" in
     install)
-      nrfutil sdk-manager install "$@" >/dev/null 2>&1
-      rc=$?
-      tried=1
-      if [ $rc -ne 0 ]; then
-        nrfutil sdk-manager sdk install "$@"
-        rc=$?
-      else
+      if _nrfvm_sdk_has_top_level "install"; then
         nrfutil sdk-manager install "$@"
+        return $?
+      fi
+      if _nrfvm_sdk_has_nested "install"; then
+        nrfutil sdk-manager sdk install "$@"
+        return $?
       fi
       ;;
     list)
-      nrfutil sdk-manager list "$@" >/dev/null 2>&1
-      rc=$?
-      tried=1
-      if [ $rc -ne 0 ]; then
-        nrfutil sdk-manager sdk list "$@"
-        rc=$?
-      else
+      if _nrfvm_sdk_has_top_level "list"; then
         nrfutil sdk-manager list "$@"
+        return $?
       fi
-      ;;
-    use)
-      nrfutil sdk-manager use "$@" >/dev/null 2>&1
-      rc=$?
-      tried=1
-      if [ $rc -ne 0 ]; then
-        nrfutil sdk-manager sdk use "$@"
-        rc=$?
-      else
-        nrfutil sdk-manager use "$@"
+      if _nrfvm_sdk_has_nested "search"; then
+        nrfutil sdk-manager sdk search "$@"
+        return $?
       fi
       ;;
     remote)
-      nrfutil sdk-manager list-remote "$@" >/dev/null 2>&1
-      rc=$?
-      tried=1
-      if [ $rc -ne 0 ]; then
-        nrfutil sdk-manager sdk list-remote "$@"
-        rc=$?
-      else
-        nrfutil sdk-manager list-remote "$@"
+      if _nrfvm_sdk_has_top_level "search"; then
+        nrfutil sdk-manager search "$@"
+        return $?
+      fi
+      if _nrfvm_sdk_has_nested "search"; then
+        nrfutil sdk-manager sdk search "$@"
+        return $?
+      fi
+      ;;
+    register)
+      if _nrfvm_sdk_has_nested "register"; then
+        nrfutil sdk-manager sdk register "$@"
+        return $?
+      fi
+      ;;
+    uninstall)
+      if _nrfvm_sdk_has_top_level "uninstall"; then
+        nrfutil sdk-manager uninstall "$@"
+        return $?
+      fi
+      if _nrfvm_sdk_has_nested "uninstall"; then
+        nrfutil sdk-manager sdk uninstall "$@"
+        return $?
       fi
       ;;
     *)
@@ -212,12 +240,19 @@ _nrfvm_run_sdk_manager() {
       ;;
   esac
 
-  if [ $tried -eq 1 ] && [ $rc -ne 0 ]; then
-    _nrfvm_err "sdk-manager command mapping failed for '$action'."
-    _nrfvm_info "Check plugin help: nrfutil sdk-manager --help"
-    return 1
-  fi
-  return 0
+  _nrfvm_err "sdk-manager command mapping failed for '$action'."
+  _nrfvm_info "Check plugin help: nrfutil sdk-manager --help"
+  return 1
+}
+
+_nrfvm_sdk_is_installed() {
+  local version="$1"
+  local out=""
+  out="$(nrfutil --json sdk-manager list "$version" 2>/dev/null || true)"
+  case "$out" in
+    *"\"sdkVersion\":\"$version\""*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 _nrfvm_use_sdk() {
@@ -226,12 +261,17 @@ _nrfvm_use_sdk() {
     _nrfvm_err "usage: nrfvm use <version>"
     return 1
   fi
+  version="$(_nrfvm_normalize_sdk_version "$version")"
   _nrfvm_requires_sourced || return 1
 
-  if ! _nrfvm_run_sdk_manager use "$version"; then
-    _nrfvm_info "Attempting install+use for SDK version $version"
+  if ! _nrfvm_sdk_is_installed "$version"; then
+    _nrfvm_info "SDK version $version is not installed, installing now"
     _nrfvm_run_sdk_manager install "$version" || return 1
-    _nrfvm_run_sdk_manager use "$version" || return 1
+  fi
+
+  if ! _nrfvm_run_sdk_manager register "$version"; then
+    _nrfvm_warn "unable to register SDK $version automatically"
+    _nrfvm_info "You can inspect registration options with: nrfutil sdk-manager sdk register --help"
   fi
 
   export NRFVM_SDK_VERSION="$version"
@@ -245,6 +285,7 @@ _nrfvm_install_sdk() {
     _nrfvm_err "usage: nrfvm install <version>"
     return 1
   fi
+  version="$(_nrfvm_normalize_sdk_version "$version")"
   _nrfvm_run_sdk_manager install "$version"
 }
 

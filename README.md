@@ -108,6 +108,8 @@ nrfvm -n install sdk-manager=1.11.0
 nrfvm -n list
 ```
 
+Note: SDK versions are normalized to a leading `v` (`2.9.0` becomes `v2.9.0`).
+
 ## Backend behavior for developers
 
 SDK commands route through `nrfutil sdk-manager` and use compatibility probing.
@@ -119,6 +121,11 @@ nrfutil install sdk-manager
 
 The adapter isolates top-level UX from backend command drift between plugin
 versions.
+
+For SDK activation semantics: `nrfutil sdk-manager` has no stable top-level
+`use` subcommand. `nrfvm use <version>` performs install-if-missing and then
+attempts `nrfutil sdk-manager sdk register <version>` to align toolchain/CMake
+registration with the selected SDK.
 
 ## Local development
 

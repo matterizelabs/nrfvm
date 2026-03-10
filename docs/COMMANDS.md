@@ -19,9 +19,21 @@ Default target is SDK.
 
 ## Version shorthand
 
-- `nrfvm 2.9.0` => `nrfvm -s use 2.9.0`
-- `nrfvm sdk@2.9.0` => `nrfvm -s use 2.9.0`
+- `nrfvm 2.9.0` => `nrfvm -s use v2.9.0`
+- `nrfvm sdk@2.9.0` => `nrfvm -s use v2.9.0`
 - `nrfvm nrfutil@sdk-manager=1.11.0` => `nrfvm -n use sdk-manager=1.11.0`
+
+SDK versions are normalized to a leading `v` when omitted.
+
+## SDK `use` behavior
+
+`nrfutil sdk-manager` does not provide a top-level `use` command. For SDK target,
+`nrfvm use <version>` does this flow:
+
+1. Normalize version to `v*`
+2. Install the SDK if it is missing
+3. Run `nrfutil sdk-manager sdk register <version>` when available
+4. Persist selected version in `nrfvm` state
 
 ## Plugin bootstrap
 
