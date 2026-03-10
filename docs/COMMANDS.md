@@ -31,10 +31,11 @@ SDK versions are normalized to a leading `v` when omitted.
 `nrfvm use <version>` does this flow:
 
 1. Normalize version to `v*`
-2. Install the SDK if it is missing
-3. Evaluate `nrfutil sdk-manager toolchain env --ncs-version <version> --as-script sh`
-4. Run `nrfutil sdk-manager sdk register <version>` when available
-5. Persist selected version in `nrfvm` state
+2. Ensure `sdk-manager install-dir` is configured (prompts first time, then sets via `nrfutil sdk-manager config install-dir set`)
+3. Install the SDK if it is missing
+4. Evaluate `nrfutil sdk-manager toolchain env --ncs-version <version> --as-script sh`
+5. Run `nrfutil sdk-manager sdk register <version>` when available
+6. Persist selected version in `nrfvm` state
 
 ## Plugin bootstrap
 

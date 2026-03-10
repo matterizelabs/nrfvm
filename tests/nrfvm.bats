@@ -8,6 +8,7 @@ setup() {
   mkdir -p "$HOME"
   export NRFVM_DIR="$TEST_ROOT/nrfvm-state"
   export NRFUTIL_FAKE_LOG="$TEST_ROOT/nrfutil.log"
+  export NRFUTIL_FAKE_CONFIG_FILE="$TEST_ROOT/sdk-manager-install-dir"
   export NRFUTIL_FAKE_TOOLCHAIN_BIN="$TEST_ROOT/toolchain/bin"
   mkdir -p "$NRFUTIL_FAKE_TOOLCHAIN_BIN"
   cat > "$NRFUTIL_FAKE_TOOLCHAIN_BIN/west" <<'EOF'
@@ -16,6 +17,7 @@ echo "west 0.0.test"
 EOF
   chmod +x "$NRFUTIL_FAKE_TOOLCHAIN_BIN/west"
   : > "$NRFUTIL_FAKE_LOG"
+  : > "$NRFUTIL_FAKE_CONFIG_FILE"
 }
 
 _write_fake_nrfutil() {
@@ -121,11 +123,44 @@ case "$1" in
         shift
         case "$1" in
           show)
-            if [ "$_json" -eq 1 ]; then
-              echo '{"type":"info","data":{"default":{"install_dir":null,"sdk_index":null,"toolchain_index":null},"sdk_indexes":{},"toolchain_indexes":{}}}'
-            else
-              echo "config show"
+            _install_dir=""
+            if [ -f "${NRFUTIL_FAKE_CONFIG_FILE:-}" ]; then
+              _install_dir="$(cat "$NRFUTIL_FAKE_CONFIG_FILE")"
             fi
+            if [ "$_json" -eq 1 ]; then
+              if [ -n "$_install_dir" ]; then
+                echo "{\"type\":\"info\",\"data\":{\"default\":{\"install_dir\":\"$_install_dir\",\"sdk_index\":null,\"toolchain_index\":null},\"sdk_indexes\":{},\"toolchain_indexes\":{}}}"
+              else
+                echo '{"type":"info","data":{"default":{"install_dir":null,"sdk_index":null,"toolchain_index":null},"sdk_indexes":{},"toolchain_indexes":{}}}'
+              fi
+            else
+              if [ -n "$_install_dir" ]; then
+                echo "default:"
+                echo "  install-dir: $_install_dir"
+              else
+                echo "default:"
+                echo "  install-dir: unset"
+              fi
+            fi
+            ;;
+          install-dir)
+            shift
+            case "$1" in
+              set)
+                if [ -z "${2:-}" ]; then
+                  exit 1
+                fi
+                printf '%s' "$2" > "$NRFUTIL_FAKE_CONFIG_FILE"
+                echo "set install-dir $2"
+                ;;
+              unset)
+                : > "$NRFUTIL_FAKE_CONFIG_FILE"
+                echo "unset install-dir"
+                ;;
+              *)
+                exit 1
+                ;;
+            esac
             ;;
           *)
             exit 1
@@ -180,6 +215,16 @@ EOF
   run bash -c '. ./nrfvm; nrfvm status'
   [ "$status" -eq 0 ]
   [[ "$output" == *"nrfvm version"* ]]
+}
+
+@test "first sdk use configures sdk-manager install-dir" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3'
+  [ "$status" -eq 0 ]
+  run bash -c 'grep -F "sdk-manager config install-dir set" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c '[ -s "$NRFUTIL_FAKE_CONFIG_FILE" ]'
+  [ "$status" -eq 0 ]
 }
 
 @test "version shorthand normalizes to v-prefix and registers SDK" {

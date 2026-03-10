@@ -64,3 +64,14 @@ session. If `west` is still missing, verify the toolchain environment command:
 If it fails, inspect available toolchains:
 
 `nrfutil sdk-manager toolchain list`
+
+## Where SDKs/toolchains are installed
+
+Check configured location:
+
+`nrfutil sdk-manager config show`
+
+If `install-dir` is `unset`, sdk-manager uses its platform default. On first
+SDK operation, `nrfvm` prompts for a location and sets it using:
+
+`nrfutil sdk-manager config install-dir set <path>`

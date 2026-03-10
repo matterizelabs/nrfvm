@@ -45,6 +45,20 @@ _nrfvm_warn() {
   printf "nrfvm: %s\n" "$1" >&2
 }
 
+_nrfvm_default_sdk_install_dir() {
+  case "$(uname -s 2>/dev/null || true)" in
+    Darwin) printf "%s" "/opt/nordic/ncs" ;;
+    *) printf "%s" "$HOME/ncs" ;;
+  esac
+}
+
+_nrfvm_sdk_install_dir_is_configurable() {
+  case "$(uname -s 2>/dev/null || true)" in
+    Darwin) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 _nrfvm_mkdirs() {
   mkdir -p "$NRFVM_DIR" "$NRFVM_STATE_DIR" "$NRFVM_DIR/cache"
 }
@@ -156,6 +170,91 @@ _nrfvm_ensure_plugin() {
   return 0
 }
 
+_nrfvm_get_configured_sdk_install_dir() {
+  local out=""
+  local dir=""
+
+  out="$(nrfutil --json sdk-manager config show 2>/dev/null || true)"
+  dir="$(printf "%s\n" "$out" | sed -n 's/.*"install_dir":"\([^"]*\)".*/\1/p')"
+  if [ -n "$dir" ]; then
+    printf "%s" "$dir"
+    return 0
+  fi
+
+  if printf "%s\n" "$out" | grep -q '"install_dir":null'; then
+    return 1
+  fi
+
+  out="$(nrfutil sdk-manager config show 2>/dev/null || true)"
+  dir="$(printf "%s\n" "$out" | sed -n 's/^[[:space:]]*install-dir:[[:space:]]*\(.*\)$/\1/p' | head -n 1)"
+  if [ -n "$dir" ] && [ "$dir" != "unset" ]; then
+    printf "%s" "$dir"
+    return 0
+  fi
+
+  return 1
+}
+
+_nrfvm_prompt_install_dir() {
+  local default_dir="$1"
+  local chosen=""
+
+  _nrfvm_info ""
+  _nrfvm_info "First-time SDK/toolchain location setup"
+  _nrfvm_info "Choose where sdk-manager installs SDKs and toolchains."
+  printf "Install directory [%s]: " "$default_dir" >&2
+  IFS= read -r chosen || true
+
+  if [ -z "$chosen" ]; then
+    chosen="$default_dir"
+  fi
+
+  chosen="${chosen/#\~/$HOME}"
+  case "$chosen" in
+    /*) ;;
+    *) chosen="$PWD/$chosen" ;;
+  esac
+
+  printf "%s" "$chosen"
+}
+
+_nrfvm_ensure_sdk_install_dir() {
+  local configured=""
+  local default_dir=""
+  local chosen=""
+
+  configured="$(_nrfvm_get_configured_sdk_install_dir || true)"
+  if [ -n "$configured" ]; then
+    return 0
+  fi
+
+  default_dir="$(_nrfvm_default_sdk_install_dir)"
+
+  if ! _nrfvm_sdk_install_dir_is_configurable; then
+    _nrfvm_info "sdk-manager install-dir is fixed on this OS: $default_dir"
+    return 0
+  fi
+
+  chosen="$(_nrfvm_prompt_install_dir "$default_dir")"
+  if [ -z "$chosen" ]; then
+    chosen="$default_dir"
+  fi
+
+  if ! mkdir -p "$chosen" 2>/dev/null; then
+    _nrfvm_err "cannot create install directory: $chosen"
+    return 1
+  fi
+
+  if ! nrfutil sdk-manager config install-dir set "$chosen" >/dev/null; then
+    _nrfvm_err "failed to set sdk-manager install-dir"
+    _nrfvm_info "Run manually: nrfutil sdk-manager config install-dir set \"$chosen\""
+    return 1
+  fi
+
+  _nrfvm_info "Configured sdk-manager install-dir: $chosen"
+  return 0
+}
+
 _nrfvm_normalize_sdk_version() {
   local version="$1"
   if [ -z "$version" ]; then
@@ -184,6 +283,10 @@ _nrfvm_run_sdk_manager() {
   local action="$1"
   shift
   if ! _nrfvm_ensure_plugin "sdk-manager"; then
+    return 1
+  fi
+
+  if ! _nrfvm_ensure_sdk_install_dir; then
     return 1
   fi
 
@@ -299,6 +402,9 @@ _nrfvm_use_sdk() {
   version="$(_nrfvm_normalize_sdk_version "$version")"
   _nrfvm_requires_sourced || return 1
 
+  _nrfvm_ensure_plugin "sdk-manager" || return 1
+  _nrfvm_ensure_sdk_install_dir || return 1
+
   if ! _nrfvm_sdk_is_installed "$version"; then
     _nrfvm_info "SDK version $version is not installed, installing now"
     _nrfvm_run_sdk_manager install "$version" || return 1
@@ -398,9 +504,20 @@ _nrfvm_current() {
 }
 
 _nrfvm_status() {
+  local sdk_install_dir=""
+  local sdk_default_dir=""
+
+  sdk_install_dir="$(_nrfvm_get_configured_sdk_install_dir || true)"
+  sdk_default_dir="$(_nrfvm_default_sdk_install_dir)"
+
   _nrfvm_info "nrfvm version: $NRFVM_VERSION"
   _nrfvm_info "nrfutil path: $(command -v nrfutil)"
   _nrfvm_info "nrfutil version: $(nrfutil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  if [ -n "$sdk_install_dir" ]; then
+    _nrfvm_info "sdk-manager install-dir: $sdk_install_dir"
+  else
+    _nrfvm_info "sdk-manager install-dir: (unset, default: $sdk_default_dir)"
+  fi
   _nrfvm_info "config dir: $NRFVM_DIR"
   _nrfvm_current
 }

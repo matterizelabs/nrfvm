@@ -40,6 +40,22 @@ At command entry, preflight checks always run:
 
 If `nrfutil` is missing, `nrfvm` fails fast with install guidance.
 
+## SDK and toolchain install location
+
+`nrfutil sdk-manager` stores SDK and toolchain bundles under its install
+directory.
+
+- Linux default (from sdk-manager docs): `~/ncs`
+- macOS default (from sdk-manager docs): `/opt/nordic/ncs`
+
+On first SDK operation, `nrfvm` checks `nrfutil sdk-manager config show`.
+If `install-dir` is unset and the platform allows overrides, `nrfvm` prompts
+for a location and persists it with:
+
+```bash
+nrfutil sdk-manager config install-dir set <path>
+```
+
 ## Repository layout
 
 - `nrfvm`: main shell implementation and command dispatcher
