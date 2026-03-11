@@ -10,6 +10,7 @@ setup() {
   export NRFUTIL_FAKE_LOG="$TEST_ROOT/nrfutil.log"
   export NRFUTIL_FAKE_CONFIG_FILE="$TEST_ROOT/sdk-manager-install-dir"
   export NRFUTIL_FAKE_TOOLCHAIN_BIN="$TEST_ROOT/toolchain/bin"
+  unset NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT
   mkdir -p "$NRFUTIL_FAKE_TOOLCHAIN_BIN"
   cat > "$NRFUTIL_FAKE_TOOLCHAIN_BIN/west" <<'EOF'
 #!/usr/bin/env bash
@@ -89,8 +90,12 @@ case "$1" in
             if [ "${2:-}" = "--help" ]; then
               exit 0
             fi
-            echo "export PATH=\"${NRFUTIL_FAKE_TOOLCHAIN_BIN}:\$PATH\""
-            echo "export NRFUTIL_FAKE_ENV_ACTIVATED=1"
+            if [ -n "${NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT:-}" ]; then
+              printf '%s\n' "$NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT"
+            else
+              echo "export PATH=\"${NRFUTIL_FAKE_TOOLCHAIN_BIN}:\$PATH\""
+              echo "export NRFUTIL_FAKE_ENV_ACTIVATED=1"
+            fi
             ;;
           list)
             if [ "${2:-}" = "--help" ]; then
@@ -347,4 +352,18 @@ EOF
   run bash -c '. ./nrfvm; nrfvm deactivate'
   [ "$status" -eq 0 ]
   [[ "$output" == *"No active SDK environment to deactivate"* ]]
+}
+
+@test "use rejects unsafe toolchain env script" {
+  _write_fake_nrfutil
+  export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT='export PATH="/tmp/evil:$PATH"; touch /tmp/pwned'
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"refusing to activate unsafe toolchain environment"* ]]
+}
+
+@test "config file content is parsed not executed" {
+  _write_fake_nrfutil
+  run bash -c 'p="$BATS_TEST_TMPDIR/pwned"; printf "NRFVM_DEFAULT_TARGET=sdk\nmalicious=\$(touch $BATS_TEST_TMPDIR/pwned)\n" > "$NRFVM_DIR/config"; . ./nrfvm; nrfvm status >/dev/null; [ ! -f "$p" ]'
+  [ "$status" -eq 0 ]
 }
