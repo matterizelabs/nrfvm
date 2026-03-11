@@ -354,6 +354,13 @@ EOF
   [[ "$output" == *"No active SDK environment to deactivate"* ]]
 }
 
+@test "deactive restores LD_LIBRARY_PATH changed by toolchain env" {
+  _write_fake_nrfutil
+  export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT=$'export PATH="'$NRFUTIL_FAKE_TOOLCHAIN_BIN':$PATH"\nexport LD_LIBRARY_PATH="/tmp/nrf-tool/lib:${LD_LIBRARY_PATH}"'
+  run bash -c '. ./nrfvm; export LD_LIBRARY_PATH="/usr/lib"; nrfvm u v3.2.3 >/dev/null; [[ "$LD_LIBRARY_PATH" == /tmp/nrf-tool/lib:* ]]; nrfvm d >/dev/null; [ "$LD_LIBRARY_PATH" = "/usr/lib" ]'
+  [ "$status" -eq 0 ]
+}
+
 @test "use rejects unsafe toolchain env script" {
   _write_fake_nrfutil
   export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT='export PATH="/tmp/evil:$PATH"; touch /tmp/pwned'

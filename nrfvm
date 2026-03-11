@@ -118,6 +118,7 @@ _nrfvm_set_state() {
 _nrfvm_get_state() {
   local key="$1"
   local file=""
+  local value=""
 
   case "$key" in
     [A-Za-z0-9._-]*) ;;
@@ -131,43 +132,110 @@ _nrfvm_get_state() {
   fi
 
   if [ -f "$file" ]; then
-    cat "$file"
+    while IFS= read -r value || [ -n "$value" ]; do
+      printf "%s\n" "$value"
+    done < "$file"
   fi
+}
+
+_nrfvm_is_valid_var_name() {
+  case "$1" in
+    [A-Za-z_][A-Za-z0-9_]*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_nrfvm_var_is_set() {
+  local var_name="$1"
+  _nrfvm_is_valid_var_name "$var_name" || return 1
+  eval "[ \"\${$var_name+x}\" = \"x\" ]"
+}
+
+_nrfvm_var_get_value() {
+  local var_name="$1"
+  _nrfvm_is_valid_var_name "$var_name" || return 1
+  eval "printf '%s' \"\${$var_name}\""
+}
+
+_nrfvm_snapshot_var() {
+  local var_name="$1"
+  local value=""
+
+  _nrfvm_is_valid_var_name "$var_name" || return 1
+
+  if _nrfvm_var_is_set "$var_name"; then
+    value="$(_nrfvm_var_get_value "$var_name")"
+    _nrfvm_set_state "env-prev-var-${var_name}-set" "1" || return 1
+    _nrfvm_set_state "env-prev-var-${var_name}-value" "$value" || return 1
+    return 0
+  fi
+
+  _nrfvm_set_state "env-prev-var-${var_name}-set" "0" || return 1
+  _nrfvm_set_state "env-prev-var-${var_name}-value" "" || return 1
+}
+
+_nrfvm_restore_var() {
+  local var_name="$1"
+  local was_set=""
+  local value=""
+
+  _nrfvm_is_valid_var_name "$var_name" || return 1
+
+  was_set="$(_nrfvm_get_state "env-prev-var-${var_name}-set")"
+  case "$was_set" in
+    1)
+      value="$(_nrfvm_get_state "env-prev-var-${var_name}-value")"
+      export "$var_name=$value"
+      ;;
+    0)
+      unset "$var_name"
+      ;;
+  esac
+}
+
+_nrfvm_collect_toolchain_env_vars() {
+  local env_script="$1"
+  local line=""
+  local assign=""
+  local var_name=""
+
+  while IFS= read -r line; do
+    case "$line" in
+      ''|'#'*) continue ;;
+      export\ *=*) ;;
+      *) continue ;;
+    esac
+
+    assign="${line#export }"
+    var_name="${assign%%=*}"
+    if _nrfvm_is_valid_var_name "$var_name"; then
+      printf "%s\n" "$var_name"
+    fi
+  done <<EOF
+$env_script
+EOF
 }
 
 _nrfvm_snapshot_sdk_env() {
+  local env_vars="$1"
+  local var_name=""
   local prev_sdk=""
 
-  if [ "${PATH+x}" = "x" ]; then
-    _nrfvm_set_state "env-prev-path-set" "1"
-    _nrfvm_set_state "env-prev-path-value" "$PATH"
-  else
-    _nrfvm_set_state "env-prev-path-set" "0"
-    _nrfvm_set_state "env-prev-path-value" ""
-  fi
+  _nrfvm_set_state "env-prev-vars" "$env_vars" || return 1
 
-  if [ "${ZEPHYR_BASE+x}" = "x" ]; then
-    _nrfvm_set_state "env-prev-zephyr-base-set" "1"
-    _nrfvm_set_state "env-prev-zephyr-base-value" "$ZEPHYR_BASE"
-  else
-    _nrfvm_set_state "env-prev-zephyr-base-set" "0"
-    _nrfvm_set_state "env-prev-zephyr-base-value" ""
-  fi
-
-  if [ "${NRFVM_SDK_VERSION+x}" = "x" ]; then
-    _nrfvm_set_state "env-prev-sdk-version-set" "1"
-    _nrfvm_set_state "env-prev-sdk-version-value" "$NRFVM_SDK_VERSION"
-  else
-    _nrfvm_set_state "env-prev-sdk-version-set" "0"
-    _nrfvm_set_state "env-prev-sdk-version-value" ""
-  fi
+  while IFS= read -r var_name; do
+    [ -n "$var_name" ] || continue
+    _nrfvm_snapshot_var "$var_name" || return 1
+  done <<EOF
+$env_vars
+EOF
 
   prev_sdk="$(_nrfvm_get_state "current-sdk")"
-  _nrfvm_set_state "env-prev-current-sdk" "$prev_sdk"
+  _nrfvm_set_state "env-prev-current-sdk" "$prev_sdk" || return 1
   _nrfvm_set_state "env-active" "0"
 }
 
-_nrfvm_restore_sdk_env() {
+_nrfvm_restore_legacy_sdk_env() {
   local was_set=""
   local value=""
 
@@ -203,6 +271,24 @@ _nrfvm_restore_sdk_env() {
       unset NRFVM_SDK_VERSION
       ;;
   esac
+}
+
+_nrfvm_restore_sdk_env() {
+  local env_vars=""
+  local var_name=""
+
+  env_vars="$(_nrfvm_get_state "env-prev-vars")"
+  if [ -z "$env_vars" ]; then
+    _nrfvm_restore_legacy_sdk_env
+    return 0
+  fi
+
+  while IFS= read -r var_name; do
+    [ -n "$var_name" ] || continue
+    _nrfvm_restore_var "$var_name"
+  done <<EOF
+$env_vars
+EOF
 }
 
 _nrfvm_apply_config_entry() {
@@ -668,12 +754,14 @@ EOF
 
 _nrfvm_activate_toolchain_env() {
   local version="$1"
-  local env_script=""
+  local env_script="${2:-}"
 
-  if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
-    _nrfvm_err "failed to resolve toolchain environment for $version"
-    _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
-    return 1
+  if [ -z "$env_script" ]; then
+    if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
+      _nrfvm_err "failed to resolve toolchain environment for $version"
+      _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
+      return 1
+    fi
   fi
 
   if [ -z "$env_script" ]; then
@@ -702,6 +790,8 @@ _nrfvm_activate_toolchain_env() {
 _nrfvm_use_sdk() {
   local version="$1"
   local sdk_install_root=""
+  local env_script=""
+  local env_vars=""
   if [ -z "$version" ]; then
     _nrfvm_err "usage: nrfvm use <version>"
     return 1
@@ -717,11 +807,31 @@ _nrfvm_use_sdk() {
     _nrfvm_run_sdk_manager install "$version" || return 1
   fi
 
-  _nrfvm_snapshot_sdk_env
+  if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
+    _nrfvm_err "failed to resolve toolchain environment for $version"
+    _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
+    return 1
+  fi
+
+  if [ -z "$env_script" ]; then
+    _nrfvm_err "empty toolchain environment script for $version"
+    return 1
+  fi
+
+  if ! _nrfvm_validate_toolchain_env_script "$env_script"; then
+    _nrfvm_err "refusing to activate unsafe toolchain environment for $version"
+    return 1
+  fi
+
+  env_vars="$(_nrfvm_collect_toolchain_env_vars "$env_script")"
+  env_vars="${env_vars}PATH
+ZEPHYR_BASE
+NRFVM_SDK_VERSION"
+
+  _nrfvm_snapshot_sdk_env "$env_vars" || return 1
   sdk_install_root="$(_nrfvm_get_sdk_install_root)"
-  if ! _nrfvm_activate_toolchain_env "$version"; then
+  if ! _nrfvm_activate_toolchain_env "$version" "$env_script"; then
     _nrfvm_restore_sdk_env
-    _nrfvm_set_state "env-active" "0"
     return 1
   fi
   _nrfvm_set_zephyr_base "$version" "$sdk_install_root"
@@ -744,11 +854,10 @@ _nrfvm_deactivate_sdk() {
     return 0
   fi
 
-  _nrfvm_restore_sdk_env
-
   prev_sdk="$(_nrfvm_get_state "env-prev-current-sdk")"
   _nrfvm_set_state "current-sdk" "$prev_sdk"
   _nrfvm_set_state "env-active" "0"
+  _nrfvm_restore_sdk_env
   _nrfvm_info "SDK environment deactivated"
 }
 
