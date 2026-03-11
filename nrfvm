@@ -292,10 +292,12 @@ _nrfvm_resolve_zephyr_base() {
 
 _nrfvm_set_zephyr_base() {
   local version="$1"
-  local install_root=""
+  local install_root="${2:-}"
   local zephyr_base=""
 
-  install_root="$(_nrfvm_get_sdk_install_root)"
+  if [ -z "$install_root" ]; then
+    install_root="$(_nrfvm_get_sdk_install_root)"
+  fi
   zephyr_base="$(_nrfvm_resolve_zephyr_base "$version" "$install_root")"
   export ZEPHYR_BASE="$zephyr_base"
 }
@@ -434,6 +436,7 @@ _nrfvm_activate_toolchain_env() {
 
 _nrfvm_use_sdk() {
   local version="$1"
+  local sdk_install_root=""
   if [ -z "$version" ]; then
     _nrfvm_err "usage: nrfvm use <version>"
     return 1
@@ -449,8 +452,9 @@ _nrfvm_use_sdk() {
     _nrfvm_run_sdk_manager install "$version" || return 1
   fi
 
+  sdk_install_root="$(_nrfvm_get_sdk_install_root)"
   _nrfvm_activate_toolchain_env "$version" || return 1
-  _nrfvm_set_zephyr_base "$version"
+  _nrfvm_set_zephyr_base "$version" "$sdk_install_root"
 
   export NRFVM_SDK_VERSION="$version"
   _nrfvm_set_state "current-sdk" "$version"

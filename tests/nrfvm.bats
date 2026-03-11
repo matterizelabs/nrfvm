@@ -204,6 +204,57 @@ EOF
   chmod +x "$TEST_ROOT/bin/nrfutil"
 }
 
+_write_fake_toolchain_nrfutil_with_unset_config() {
+  cat > "$NRFUTIL_FAKE_TOOLCHAIN_BIN/nrfutil" <<'EOF'
+#!/usr/bin/env bash
+
+if [ -n "${NRFUTIL_FAKE_LOG:-}" ]; then
+  printf 'toolchain:%s\n' "$*" >> "$NRFUTIL_FAKE_LOG"
+fi
+
+if [ "${1:-}" = "--json" ]; then
+  shift
+  _json=1
+else
+  _json=0
+fi
+
+case "$1" in
+  --version)
+    echo "nrfutil 0.0.toolchain"
+    ;;
+  sdk-manager)
+    shift
+    case "$1" in
+      config)
+        shift
+        case "$1" in
+          show)
+            if [ "$_json" -eq 1 ]; then
+              echo '{"type":"info","data":{"default":{"install_dir":null,"sdk_index":null,"toolchain_index":null},"sdk_indexes":{},"toolchain_indexes":{}}}'
+            else
+              echo "default:"
+              echo "  install-dir: unset"
+            fi
+            ;;
+          *)
+            exit 1
+            ;;
+        esac
+        ;;
+      *)
+        exit 1
+        ;;
+    esac
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$NRFUTIL_FAKE_TOOLCHAIN_BIN/nrfutil"
+}
+
 @test "preflight fails when nrfutil missing" {
   run bash -c '. ./nrfvm; nrfvm status'
   [ "$status" -ne 0 ]
@@ -269,5 +320,12 @@ EOF
   run bash -c '! grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 >/dev/null; west --version >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "zephyr base uses install-dir from pre-activation nrfutil" {
+  _write_fake_nrfutil
+  _write_fake_toolchain_nrfutil_with_unset_config
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source" >/dev/null; [ "$ZEPHYR_BASE" = "$HOME/office/ncs/source/v3.2.3/zephyr" ]'
   [ "$status" -eq 0 ]
 }
