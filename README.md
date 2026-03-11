@@ -141,8 +141,8 @@ versions.
 For SDK activation semantics: `nrfutil sdk-manager` has no stable top-level
 `use` subcommand. `nrfvm use <version>` performs install-if-missing, evaluates
 the toolchain shell environment (`nrfutil sdk-manager toolchain env ...
---as-script sh`) in the current shell, and stores the selected SDK version in
-`nrfvm` state for follow-up commands.
+--as-script sh`) in the current shell, sets `ZEPHYR_BASE` for the selected SDK,
+and stores the selected SDK version in `nrfvm` state for follow-up commands.
 
 ## Local development
 

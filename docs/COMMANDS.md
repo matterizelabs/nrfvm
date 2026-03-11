@@ -34,7 +34,8 @@ SDK versions are normalized to a leading `v` when omitted.
 2. Ensure `sdk-manager install-dir` is configured (prompts first time, then sets via `nrfutil sdk-manager config install-dir set`)
 3. Install the SDK if it is missing
 4. Evaluate `nrfutil sdk-manager toolchain env --ncs-version <version> --as-script sh`
-5. Persist selected version in `nrfvm` state
+5. Set `ZEPHYR_BASE` for the selected SDK
+6. Persist selected version in `nrfvm` state
 
 ## Plugin bootstrap
 

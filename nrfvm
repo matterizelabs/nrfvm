@@ -255,6 +255,51 @@ _nrfvm_ensure_sdk_install_dir() {
   return 0
 }
 
+_nrfvm_get_sdk_install_root() {
+  local configured=""
+
+  configured="$(_nrfvm_get_configured_sdk_install_dir || true)"
+  if [ -n "$configured" ]; then
+    printf "%s" "$configured"
+    return 0
+  fi
+
+  _nrfvm_default_sdk_install_dir
+}
+
+_nrfvm_resolve_zephyr_base() {
+  local version="$1"
+  local install_root="$2"
+  local version_no_v="${version#v}"
+  local candidate=""
+
+  for candidate in \
+    "$install_root/$version/zephyr" \
+    "$install_root/$version_no_v/zephyr" \
+    "$install_root/$version/nrf/zephyr" \
+    "$install_root/$version_no_v/nrf/zephyr" \
+    "$install_root/nrf/$version/zephyr" \
+    "$install_root/nrf/$version_no_v/zephyr"
+  do
+    if [ -d "$candidate" ]; then
+      printf "%s" "$candidate"
+      return 0
+    fi
+  done
+
+  printf "%s" "$install_root/$version/zephyr"
+}
+
+_nrfvm_set_zephyr_base() {
+  local version="$1"
+  local install_root=""
+  local zephyr_base=""
+
+  install_root="$(_nrfvm_get_sdk_install_root)"
+  zephyr_base="$(_nrfvm_resolve_zephyr_base "$version" "$install_root")"
+  export ZEPHYR_BASE="$zephyr_base"
+}
+
 _nrfvm_normalize_sdk_version() {
   local version="$1"
   if [ -z "$version" ]; then
@@ -405,6 +450,7 @@ _nrfvm_use_sdk() {
   fi
 
   _nrfvm_activate_toolchain_env "$version" || return 1
+  _nrfvm_set_zephyr_base "$version"
 
   export NRFVM_SDK_VERSION="$version"
   _nrfvm_set_state "current-sdk" "$version"

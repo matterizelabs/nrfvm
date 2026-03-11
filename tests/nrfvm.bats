@@ -235,6 +235,8 @@ EOF
   [ "$status" -eq 0 ]
   run bash -c 'expected="sdk-manager config install-dir set $HOME/office/ncs/source"; grep -F "$expected" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
+  run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source" >/dev/null; [ "$ZEPHYR_BASE" = "$HOME/office/ncs/source/v3.2.3/zephyr" ]'
+  [ "$status" -eq 0 ]
 }
 
 @test "version shorthand normalizes to v-prefix and activates toolchain env" {
@@ -249,6 +251,8 @@ EOF
   run bash -c '! grep -F "sdk-manager sdk register v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c '. ./nrfvm; nrfvm 2.9.0 >/dev/null; command -v west >/dev/null'
+  [ "$status" -eq 0 ]
+  run bash -c '. ./nrfvm; nrfvm 2.9.0 >/dev/null; [ "$ZEPHYR_BASE" = "$HOME/ncs/v2.9.0/zephyr" ]'
   [ "$status" -eq 0 ]
 }
 
