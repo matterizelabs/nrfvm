@@ -56,6 +56,17 @@ case "$1" in
         if [ "${2:-}" = "--help" ]; then
           exit 0
         fi
+
+        if [ "$_json" -eq 1 ] && [ -n "${NRFUTIL_FAKE_JSON_LIST_OUTPUT:-}" ]; then
+          printf '%s\n' "$NRFUTIL_FAKE_JSON_LIST_OUTPUT"
+          exit 0
+        fi
+
+        if [ -n "${NRFUTIL_FAKE_LIST_OUTPUT:-}" ]; then
+          printf '%s\n' "$NRFUTIL_FAKE_LIST_OUTPUT"
+          exit 0
+        fi
+
         shift
         if [ "${1:-}" = "--styling" ]; then
           shift 2
@@ -325,6 +336,29 @@ EOF
   run bash -c '! grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 >/dev/null; west --version >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "use installs sdk when sdk status is not installed" {
+  _write_fake_nrfutil
+  export NRFUTIL_FAKE_LIST_OUTPUT=$'SDK Type  SDK Version  SDK Status      Toolchain Status\nnrf       v3.2.2      Not installed   Installed'
+  run bash -c '. ./nrfvm; nrfvm u v3.2.2'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SDK version v3.2.2 is not installed, installing now"* ]]
+  run bash -c 'grep -F "sdk-manager install v3.2.2" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "sdk target command set smoke test" {
+  _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
+  run bash -c '. ./nrfvm; nrfvm help >/dev/null; nrfvm st >/dev/null; nrfvm cfg list >/dev/null; nrfvm ls >/dev/null; nrfvm r >/dev/null; nrfvm c >/dev/null; nrfvm i v3.2.3 >/dev/null; nrfvm u v3.2.3 >/dev/null; nrfvm d >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "nrfutil target command set smoke test" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; nrfvm -n help >/dev/null; nrfvm -n ls >/dev/null; nrfvm -n r sdk-manager >/dev/null; nrfvm -n i sdk-manager=1.11.0 >/dev/null; nrfvm -n u sdk-manager=1.11.0 >/dev/null; nrfvm -n c >/dev/null; nrfvm -n d >/dev/null'
   [ "$status" -eq 0 ]
 }
 

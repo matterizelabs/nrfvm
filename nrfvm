@@ -695,19 +695,66 @@ _nrfvm_run_sdk_manager() {
 
 _nrfvm_sdk_is_installed() {
   local version="$1"
+  local version_no_v="${version#v}"
   local out=""
+  local compact=""
+  local line=""
+  local rest=""
+  local matched=0
 
   out="$(nrfutil sdk-manager list --styling never "$version" 2>/dev/null || nrfutil sdk-manager list "$version" 2>/dev/null || true)"
-  case "$out" in
-    *"$version"*Installed*) return 0 ;;
-    *"$version"*installed*) return 0 ;;
-  esac
+  while IFS= read -r line; do
+    matched=0
+    case "$line" in
+      *"$version"*)
+        rest="${line#*"$version"}"
+        matched=1
+        ;;
+      *"$version_no_v"*)
+        rest="${line#*"$version_no_v"}"
+        matched=1
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    if [ "$matched" -eq 0 ]; then
+      continue
+    fi
+
+    rest="$(printf "%s" "$rest" | sed 's/^[[:space:]]*//')"
+    case "$rest" in
+      [Ii]nstalled*) return 0 ;;
+      [Nn]ot[[:space:]]*[Ii]nstalled*) continue ;;
+      [Mm]issing*) continue ;;
+    esac
+  done <<EOF
+$out
+EOF
 
   out="$(nrfutil --json sdk-manager list "$version" 2>/dev/null || true)"
-  case "$out" in
-    *"\"sdkVersion\":\"$version\""*"\"installed\""*) return 0 ;;
-    *) return 1 ;;
+  compact="$(printf "%s" "$out" | tr -d '[:space:]')"
+
+  case "$compact" in
+    *"\"sdkVersion\":\"$version\""*"\"sdkStatus\":\"installed\""*) return 0 ;;
+    *"\"sdkVersion\":\"$version\""*"\"sdkStatus\":\"Installed\""*) return 0 ;;
+    *"\"sdk_version\":\"$version\""*"\"sdk_status\":\"installed\""*) return 0 ;;
+    *"\"sdk_version\":\"$version\""*"\"sdk_status\":\"Installed\""*) return 0 ;;
+    *"\"version\":\"$version\""*"\"status\":\"installed\""*) return 0 ;;
+    *"\"version\":\"$version\""*"\"status\":\"Installed\""*) return 0 ;;
   esac
+
+  case "$compact" in
+    *"\"sdkVersion\":\"$version_no_v\""*"\"sdkStatus\":\"installed\""*) return 0 ;;
+    *"\"sdkVersion\":\"$version_no_v\""*"\"sdkStatus\":\"Installed\""*) return 0 ;;
+    *"\"sdk_version\":\"$version_no_v\""*"\"sdk_status\":\"installed\""*) return 0 ;;
+    *"\"sdk_version\":\"$version_no_v\""*"\"sdk_status\":\"Installed\""*) return 0 ;;
+    *"\"version\":\"$version_no_v\""*"\"status\":\"installed\""*) return 0 ;;
+    *"\"version\":\"$version_no_v\""*"\"status\":\"Installed\""*) return 0 ;;
+  esac
+
+  return 1
 }
 
 _nrfvm_validate_toolchain_env_script() {
