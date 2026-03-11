@@ -24,6 +24,22 @@ Fix:
 2. Open new shell.
 3. Run `nrfvm use <version>` again.
 
+## return to pre-use shell
+
+Symptom:
+
+You want to undo environment changes from `nrfvm use`.
+
+Fix:
+
+Run:
+
+`nrfvm deactive`
+
+Alias also supported:
+
+`nrfvm deactivate`
+
 ## sdk-manager plugin missing
 
 Symptom:

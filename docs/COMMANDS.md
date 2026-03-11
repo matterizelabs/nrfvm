@@ -11,6 +11,7 @@ Default target is SDK.
 
 - `install`, `i`
 - `use`, `u`
+- `deactive`/`deactivate`, `d`
 - `list`, `ls`
 - `remote`, `r`
 - `current`, `c`
@@ -36,6 +37,16 @@ SDK versions are normalized to a leading `v` when omitted.
 4. Evaluate `nrfutil sdk-manager toolchain env --ncs-version <version> --as-script sh`
 5. Set `ZEPHYR_BASE` for the selected SDK
 6. Persist selected version in `nrfvm` state
+
+## SDK `deactive` behavior
+
+`nrfvm deactive` (or `nrfvm deactivate`) restores the shell environment snapshot
+taken before the most recent `nrfvm use` call:
+
+1. Restore `PATH`
+2. Restore `ZEPHYR_BASE`
+3. Restore `NRFVM_SDK_VERSION`
+4. Restore previous `current-sdk` state
 
 ## Plugin bootstrap
 

@@ -77,6 +77,52 @@ _nrfvm_get_state() {
   fi
 }
 
+_nrfvm_snapshot_shell_var() {
+  local var_name="$1"
+  local key_base="$2"
+  local value=""
+
+  if eval "[ \"\${$var_name+x}\" = \"x\" ]"; then
+    value="$(eval "printf '%s' \"\${$var_name}\"")"
+    _nrfvm_set_state "${key_base}-set" "1"
+    _nrfvm_set_state "${key_base}-value" "$value"
+    return 0
+  fi
+
+  _nrfvm_set_state "${key_base}-set" "0"
+  _nrfvm_set_state "${key_base}-value" ""
+}
+
+_nrfvm_restore_shell_var() {
+  local var_name="$1"
+  local key_base="$2"
+  local was_set=""
+  local value=""
+
+  was_set="$(_nrfvm_get_state "${key_base}-set")"
+  case "$was_set" in
+    1)
+      value="$(_nrfvm_get_state "${key_base}-value")"
+      export "$var_name=$value"
+      ;;
+    0)
+      unset "$var_name"
+      ;;
+  esac
+}
+
+_nrfvm_snapshot_sdk_env() {
+  local prev_sdk=""
+
+  _nrfvm_snapshot_shell_var "PATH" "env-prev-path"
+  _nrfvm_snapshot_shell_var "ZEPHYR_BASE" "env-prev-zephyr-base"
+  _nrfvm_snapshot_shell_var "NRFVM_SDK_VERSION" "env-prev-sdk-version"
+
+  prev_sdk="$(_nrfvm_get_state "current-sdk")"
+  _nrfvm_set_state "env-prev-current-sdk" "$prev_sdk"
+  _nrfvm_set_state "env-active" "0"
+}
+
 _nrfvm_load_config() {
   NRFVM_DEFAULT_TARGET="sdk"
   NRFVM_REMOTE_CACHE_TTL="3600"
@@ -452,13 +498,37 @@ _nrfvm_use_sdk() {
     _nrfvm_run_sdk_manager install "$version" || return 1
   fi
 
+  _nrfvm_snapshot_sdk_env
   sdk_install_root="$(_nrfvm_get_sdk_install_root)"
   _nrfvm_activate_toolchain_env "$version" || return 1
   _nrfvm_set_zephyr_base "$version" "$sdk_install_root"
 
   export NRFVM_SDK_VERSION="$version"
   _nrfvm_set_state "current-sdk" "$version"
+  _nrfvm_set_state "env-active" "1"
   _nrfvm_info "Now using SDK version $version"
+}
+
+_nrfvm_deactivate_sdk() {
+  local active=""
+  local prev_sdk=""
+
+  _nrfvm_requires_sourced || return 1
+
+  active="$(_nrfvm_get_state "env-active")"
+  if [ "$active" != "1" ]; then
+    _nrfvm_info "No active SDK environment to deactivate"
+    return 0
+  fi
+
+  _nrfvm_restore_shell_var "PATH" "env-prev-path"
+  _nrfvm_restore_shell_var "ZEPHYR_BASE" "env-prev-zephyr-base"
+  _nrfvm_restore_shell_var "NRFVM_SDK_VERSION" "env-prev-sdk-version"
+
+  prev_sdk="$(_nrfvm_get_state "env-prev-current-sdk")"
+  _nrfvm_set_state "current-sdk" "$prev_sdk"
+  _nrfvm_set_state "env-active" "0"
+  _nrfvm_info "SDK environment deactivated"
 }
 
 _nrfvm_install_sdk() {
@@ -630,6 +700,7 @@ Targets:
 Commands:
   i, install    Install target version
   u, use        Activate/select target version
+  d, deactive/deactivate  Restore pre-use shell environment
   ls, list      List installed versions/commands
   r, remote     List available remote versions/commands
   c, current    Show active selections
@@ -651,6 +722,7 @@ _nrfvm_handle_sdk() {
   case "$cmd" in
     i|install) _nrfvm_install_sdk "$@" ;;
     u|use) _nrfvm_use_sdk "$@" ;;
+    d|deactive|deactivate) _nrfvm_deactivate_sdk ;;
     ls|list) _nrfvm_list_sdk "$@" ;;
     r|remote) _nrfvm_remote_sdk "$@" ;;
     c|current) _nrfvm_current sdk ;;
@@ -671,6 +743,7 @@ _nrfvm_handle_nrfutil() {
   case "$cmd" in
     i|install) _nrfvm_install_nrfutil_target "$@" ;;
     u|use) _nrfvm_use_nrfutil_target "$@" ;;
+    d|deactive|deactivate) _nrfvm_deactivate_sdk ;;
     ls|list) _nrfvm_list_nrfutil_target "$@" ;;
     r|remote) _nrfvm_remote_nrfutil_target "$@" ;;
     c|current) _nrfvm_current nrfutil ;;
@@ -759,7 +832,7 @@ _nrfvm_bash_completion() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local commands="install use list remote current status config help i u ls r c st cfg"
+  local commands="install use deactive deactivate list remote current status config help i u d ls r c st cfg"
   local targets="-s -n sdk nrfutil"
   local config_actions="list show set unset"
   local config_keys="default_target remote_cache_ttl auto_install_plugins"

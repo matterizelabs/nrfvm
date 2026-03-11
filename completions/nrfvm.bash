@@ -4,7 +4,7 @@ _nrfvm_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  local commands="install use list remote current status config help i u ls r c st cfg"
+  local commands="install use deactive deactivate list remote current status config help i u d ls r c st cfg"
   local targets="-s -n sdk nrfutil"
   local config_actions="list show set unset"
   local config_keys="default_target remote_cache_ttl auto_install_plugins"

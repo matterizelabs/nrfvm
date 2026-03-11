@@ -329,3 +329,22 @@ EOF
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source" >/dev/null; [ "$ZEPHYR_BASE" = "$HOME/office/ncs/source/v3.2.3/zephyr" ]'
   [ "$status" -eq 0 ]
 }
+
+@test "deactive restores shell variables to pre-use values" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; original_path="$PATH"; export ZEPHYR_BASE="/tmp/previous-zephyr"; export NRFVM_SDK_VERSION="v0.0.0"; nrfvm u v3.2.3 >/dev/null; nrfvm deactive >/dev/null; [ "$PATH" = "$original_path" ] && [ "$ZEPHYR_BASE" = "/tmp/previous-zephyr" ] && [ "$NRFVM_SDK_VERSION" = "v0.0.0" ]'
+  [ "$status" -eq 0 ]
+}
+
+@test "deactivate unsets nrfvm vars when they were initially unset" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; original_path="$PATH"; nrfvm u v3.2.3 >/dev/null; command -v west >/dev/null; nrfvm deactivate >/dev/null; [ "$PATH" = "$original_path" ] && [ -z "${ZEPHYR_BASE+x}" ] && [ -z "${NRFVM_SDK_VERSION+x}" ] && ! command -v west >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
+@test "deactivate reports no-op when nothing is active" {
+  _write_fake_nrfutil
+  run bash -c '. ./nrfvm; nrfvm deactivate'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No active SDK environment to deactivate"* ]]
+}

@@ -105,6 +105,7 @@ Core commands:
 
 - `install` (`i`)
 - `use` (`u`)
+- `deactive` / `deactivate` (`d`)
 - `list` (`ls`)
 - `remote` (`r`)
 - `current` (`c`)
@@ -116,6 +117,7 @@ Examples:
 ```bash
 # SDK
 nrfvm 2.9.0
+nrfvm deactive
 nrfvm -s install 2.9.0
 nrfvm -s list
 
@@ -143,6 +145,12 @@ For SDK activation semantics: `nrfutil sdk-manager` has no stable top-level
 the toolchain shell environment (`nrfutil sdk-manager toolchain env ...
 --as-script sh`) in the current shell, sets `ZEPHYR_BASE` for the selected SDK,
 and stores the selected SDK version in `nrfvm` state for follow-up commands.
+
+To restore your shell to the state before the last `use`, run:
+
+```bash
+nrfvm deactive
+```
 
 ## Local development
 

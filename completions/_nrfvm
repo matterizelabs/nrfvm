@@ -4,6 +4,8 @@ local -a commands
 commands=(
   'install:Install target version'
   'use:Activate target version'
+  'deactive:Restore pre-use shell environment'
+  'deactivate:Restore pre-use shell environment'
   'list:List installed targets'
   'remote:List remote targets'
   'current:Show current targets'
@@ -12,6 +14,7 @@ commands=(
   'help:Show help'
   'i:Install target version'
   'u:Activate target version'
+  'd:Restore pre-use shell environment'
   'ls:List installed targets'
   'r:List remote targets'
   'c:Show current targets'
@@ -21,7 +24,7 @@ commands=(
 
 _arguments \
   '1:target or command:(-s -n sdk nrfutil ${commands%%:*})' \
-  '2:command:(install use list remote current status config help i u ls r c st cfg)' \
+  '2:command:(install use deactive deactivate list remote current status config help i u d ls r c st cfg)' \
   '*::arg:->args'
 
 case $state in
