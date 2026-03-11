@@ -141,9 +141,8 @@ versions.
 For SDK activation semantics: `nrfutil sdk-manager` has no stable top-level
 `use` subcommand. `nrfvm use <version>` performs install-if-missing, evaluates
 the toolchain shell environment (`nrfutil sdk-manager toolchain env ...
---as-script sh`) in the current shell, and then attempts
-`nrfutil sdk-manager sdk register <version>` to align toolchain/CMake
-registration with the selected SDK.
+--as-script sh`) in the current shell, and stores the selected SDK version in
+`nrfvm` state for follow-up commands.
 
 ## Local development
 

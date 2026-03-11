@@ -204,32 +204,6 @@ EOF
   chmod +x "$TEST_ROOT/bin/nrfutil"
 }
 
-_write_fake_toolchain_nrfutil_without_sdk_manager() {
-  cat > "$NRFUTIL_FAKE_TOOLCHAIN_BIN/nrfutil" <<'EOF'
-#!/usr/bin/env bash
-
-if [ -n "${NRFUTIL_FAKE_LOG:-}" ]; then
-  printf 'toolchain:%s\n' "$*" >> "$NRFUTIL_FAKE_LOG"
-fi
-
-case "$1" in
-  --version)
-    echo "nrfutil 0.0.toolchain"
-    ;;
-  sdk-manager)
-    exit 1
-    ;;
-  install)
-    echo "toolchain install ${2:-}"
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-EOF
-  chmod +x "$NRFUTIL_FAKE_TOOLCHAIN_BIN/nrfutil"
-}
-
 @test "preflight fails when nrfutil missing" {
   run bash -c '. ./nrfvm; nrfvm status'
   [ "$status" -ne 0 ]
@@ -263,7 +237,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "version shorthand normalizes to v-prefix and registers SDK" {
+@test "version shorthand normalizes to v-prefix and activates toolchain env" {
   _write_fake_nrfutil
   run bash -c '. ./nrfvm; nrfvm 2.9.0'
   [ "$status" -eq 0 ]
@@ -272,7 +246,7 @@ EOF
   [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v2.9.0 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
-  run bash -c 'grep -F "sdk-manager sdk register v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  run bash -c '! grep -F "sdk-manager sdk register v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c '. ./nrfvm; nrfvm 2.9.0 >/dev/null; command -v west >/dev/null'
   [ "$status" -eq 0 ]
@@ -288,22 +262,8 @@ EOF
   [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
-  run bash -c 'grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  run bash -c '! grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 >/dev/null; west --version >/dev/null'
-  [ "$status" -eq 0 ]
-}
-
-@test "register uses initial nrfutil after toolchain env activation" {
-  _write_fake_nrfutil
-  _write_fake_toolchain_nrfutil_without_sdk_manager
-  run bash -c '. ./nrfvm; nrfvm u v3.2.3'
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"Required nrfutil plugin 'sdk-manager' is missing"* ]]
-  run bash -c 'grep -F "sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
-  [ "$status" -eq 0 ]
-  run bash -c '! grep -F "toolchain:sdk-manager sdk register v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
-  [ "$status" -eq 0 ]
-  run bash -c '! grep -F "toolchain:install sdk-manager" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
 }

@@ -279,27 +279,6 @@ _nrfvm_sdk_has_nested() {
   nrfutil sdk-manager sdk "$cmd" --help >/dev/null 2>&1
 }
 
-_nrfvm_sdk_has_nested_with_bin() {
-  local nrfutil_bin="$1"
-  local cmd="$2"
-  "$nrfutil_bin" sdk-manager sdk "$cmd" --help >/dev/null 2>&1
-}
-
-_nrfvm_register_sdk() {
-  local version="$1"
-  local nrfutil_bin="$2"
-
-  if [ -z "$nrfutil_bin" ] || [ ! -x "$nrfutil_bin" ]; then
-    return 1
-  fi
-
-  if ! _nrfvm_sdk_has_nested_with_bin "$nrfutil_bin" "register"; then
-    return 1
-  fi
-
-  "$nrfutil_bin" sdk-manager sdk register "$version"
-}
-
 _nrfvm_run_sdk_manager() {
   local action="$1"
   shift
@@ -339,12 +318,6 @@ _nrfvm_run_sdk_manager() {
       fi
       if _nrfvm_sdk_has_nested "search"; then
         nrfutil sdk-manager sdk search "$@"
-        return $?
-      fi
-      ;;
-    register)
-      if _nrfvm_sdk_has_nested "register"; then
-        nrfutil sdk-manager sdk register "$@"
         return $?
       fi
       ;;
@@ -416,14 +389,12 @@ _nrfvm_activate_toolchain_env() {
 
 _nrfvm_use_sdk() {
   local version="$1"
-  local nrfutil_bin=""
   if [ -z "$version" ]; then
     _nrfvm_err "usage: nrfvm use <version>"
     return 1
   fi
   version="$(_nrfvm_normalize_sdk_version "$version")"
   _nrfvm_requires_sourced || return 1
-  nrfutil_bin="$(command -v nrfutil || true)"
 
   _nrfvm_ensure_plugin "sdk-manager" || return 1
   _nrfvm_ensure_sdk_install_dir || return 1
@@ -434,11 +405,6 @@ _nrfvm_use_sdk() {
   fi
 
   _nrfvm_activate_toolchain_env "$version" || return 1
-
-  if ! _nrfvm_register_sdk "$version" "$nrfutil_bin"; then
-    _nrfvm_warn "unable to register SDK $version automatically"
-    _nrfvm_info "You can inspect registration options with: nrfutil sdk-manager sdk register --help"
-  fi
 
   export NRFVM_SDK_VERSION="$version"
   _nrfvm_set_state "current-sdk" "$version"
