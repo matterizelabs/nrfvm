@@ -274,18 +274,19 @@ EOF
 @test "preflight fails when nrfutil missing" {
   run bash -c '. ./nrfvm; nrfvm status'
   [ "$status" -ne 0 ]
-  [[ "$output" == *"nrfutil is not in PATH"* ]]
+  [[ "$output" == *"nrfutil not in PATH"* ]]
 }
 
 @test "status works when nrfutil exists" {
   _write_fake_nrfutil
   run bash -c '. ./nrfvm; nrfvm status'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"nrfvm version"* ]]
+  [[ "$output" == *"nrfvm:"* ]]
 }
 
 @test "first sdk use configures sdk-manager install-dir" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   run bash -c '. ./nrfvm; nrfvm u v3.2.3'
   [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager config install-dir set" "$NRFUTIL_FAKE_LOG" >/dev/null'
@@ -296,6 +297,7 @@ EOF
 
 @test "tilde install-dir input is expanded to absolute path" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source"'
   [ "$status" -eq 0 ]
   run bash -c 'expected="$HOME/office/ncs/source"; [ "$(cat "$NRFUTIL_FAKE_CONFIG_FILE")" = "$expected" ]'
@@ -308,10 +310,11 @@ EOF
 
 @test "version shorthand normalizes to v-prefix and activates toolchain env" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v2.9.0"
   run bash -c '. ./nrfvm; nrfvm 2.9.0'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Now using SDK version v2.9.0"* ]]
-  run bash -c 'grep -F "sdk-manager install v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [[ "$output" == *"using sdk: v2.9.0"* ]]
+  run bash -c '! grep -F "sdk-manager install v2.9.0" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v2.9.0 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
@@ -328,7 +331,7 @@ EOF
   export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   run bash -c '. ./nrfvm; nrfvm u v3.2.3'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Now using SDK version v3.2.3"* ]]
+  [[ "$output" == *"using sdk: v3.2.3"* ]]
   run bash -c '! grep -F "sdk-manager install v3.2.3" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
   run bash -c 'grep -F "sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh" "$NRFUTIL_FAKE_LOG" >/dev/null'
@@ -339,12 +342,24 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "use prompts before sdk install and can cancel" {
+  _write_fake_nrfutil
+  printf '%s' "$HOME/ncs" > "$NRFUTIL_FAKE_CONFIG_FILE"
+  export NRFUTIL_FAKE_LIST_OUTPUT=$'SDK Type  SDK Version  SDK Status      Toolchain Status\nnrf       v3.2.2      Not installed   Installed'
+  run bash -c '. ./nrfvm; nrfvm u v3.2.2 <<< "n"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sdk install canceled: v3.2.2"* ]]
+  run bash -c '! grep -F "sdk-manager install v3.2.2" "$NRFUTIL_FAKE_LOG" >/dev/null'
+  [ "$status" -eq 0 ]
+}
+
 @test "use installs sdk when sdk status is not installed" {
   _write_fake_nrfutil
+  printf '%s' "$HOME/ncs" > "$NRFUTIL_FAKE_CONFIG_FILE"
   export NRFUTIL_FAKE_LIST_OUTPUT=$'SDK Type  SDK Version  SDK Status      Toolchain Status\nnrf       v3.2.2      Not installed   Installed'
-  run bash -c '. ./nrfvm; nrfvm u v3.2.2'
+  run bash -c '. ./nrfvm; nrfvm u v3.2.2 <<< "y"'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"SDK version v3.2.2 is not installed, installing now"* ]]
+  [[ "$output" == *"install sdk: v3.2.2"* ]]
   run bash -c 'grep -F "sdk-manager install v3.2.2" "$NRFUTIL_FAKE_LOG" >/dev/null'
   [ "$status" -eq 0 ]
 }
@@ -364,6 +379,7 @@ EOF
 
 @test "zephyr base uses install-dir from pre-activation nrfutil" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   _write_fake_toolchain_nrfutil_with_unset_config
   run bash -c '. ./nrfvm; nrfvm u v3.2.3 <<< "~/office/ncs/source" >/dev/null; [ "$ZEPHYR_BASE" = "$HOME/office/ncs/source/v3.2.3/zephyr" ]'
   [ "$status" -eq 0 ]
@@ -371,12 +387,14 @@ EOF
 
 @test "deactive restores shell variables to pre-use values" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   run bash -c '. ./nrfvm; original_path="$PATH"; export ZEPHYR_BASE="/tmp/previous-zephyr"; export NRFVM_SDK_VERSION="v0.0.0"; nrfvm u v3.2.3 >/dev/null; nrfvm deactive >/dev/null; [ "$PATH" = "$original_path" ] && [ "$ZEPHYR_BASE" = "/tmp/previous-zephyr" ] && [ "$NRFVM_SDK_VERSION" = "v0.0.0" ]'
   [ "$status" -eq 0 ]
 }
 
 @test "deactivate unsets nrfvm vars when they were initially unset" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   run bash -c '. ./nrfvm; original_path="$PATH"; nrfvm u v3.2.3 >/dev/null; command -v west >/dev/null; nrfvm deactivate >/dev/null; [ "$PATH" = "$original_path" ] && [ -z "${ZEPHYR_BASE+x}" ] && [ -z "${NRFVM_SDK_VERSION+x}" ] && ! command -v west >/dev/null'
   [ "$status" -eq 0 ]
 }
@@ -385,11 +403,12 @@ EOF
   _write_fake_nrfutil
   run bash -c '. ./nrfvm; nrfvm deactivate'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"No active SDK environment to deactivate"* ]]
+  [[ "$output" == *"no active sdk env"* ]]
 }
 
 @test "deactive restores LD_LIBRARY_PATH changed by toolchain env" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT=$'export PATH="'$NRFUTIL_FAKE_TOOLCHAIN_BIN':$PATH"\nexport LD_LIBRARY_PATH="/tmp/nrf-tool/lib:${LD_LIBRARY_PATH}"'
   run bash -c '. ./nrfvm; export LD_LIBRARY_PATH="/usr/lib"; nrfvm u v3.2.3 >/dev/null; [[ "$LD_LIBRARY_PATH" == /tmp/nrf-tool/lib:* ]]; nrfvm d >/dev/null; [ "$LD_LIBRARY_PATH" = "/usr/lib" ]'
   [ "$status" -eq 0 ]
@@ -397,10 +416,11 @@ EOF
 
 @test "use rejects unsafe toolchain env script" {
   _write_fake_nrfutil
+  export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
   export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT='export PATH="/tmp/evil:$PATH"; touch /tmp/pwned'
   run bash -c '. ./nrfvm; nrfvm u v3.2.3'
   [ "$status" -ne 0 ]
-  [[ "$output" == *"refusing to activate unsafe toolchain environment"* ]]
+  [[ "$output" == *"unsafe toolchain env blocked"* ]]
 }
 
 @test "config file content is parsed not executed" {

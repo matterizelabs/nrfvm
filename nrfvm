@@ -83,7 +83,7 @@ _nrfvm_set_state() {
   case "$key" in
     [A-Za-z0-9._-]*) ;;
     *)
-      _nrfvm_err "invalid state key '$key'"
+      _nrfvm_err "bad state key: $key"
       return 1
       ;;
   esac
@@ -91,26 +91,26 @@ _nrfvm_set_state() {
   _nrfvm_mkdirs || return 1
   file="$NRFVM_STATE_DIR/$key"
   if [ -L "$file" ]; then
-    _nrfvm_err "refusing to write symlinked state file: $file"
+    _nrfvm_err "state file is symlink: $file"
     return 1
   fi
 
   tmp="$(mktemp "$NRFVM_STATE_DIR/.${key}.XXXXXX" 2>/dev/null)"
   if [ -z "$tmp" ]; then
-    _nrfvm_err "failed to create temporary state file for '$key'"
+    _nrfvm_err "tmp state file failed: $key"
     return 1
   fi
 
   if ! printf "%s\n" "$value" > "$tmp"; then
     rm -f "$tmp"
-    _nrfvm_err "failed writing state key '$key'"
+    _nrfvm_err "write state failed: $key"
     return 1
   fi
 
   chmod 600 "$tmp" 2>/dev/null || true
   if ! mv "$tmp" "$file"; then
     rm -f "$tmp"
-    _nrfvm_err "failed to persist state key '$key'"
+    _nrfvm_err "save state failed: $key"
     return 1
   fi
 }
@@ -127,7 +127,7 @@ _nrfvm_get_state() {
 
   file="$NRFVM_STATE_DIR/$key"
   if [ -L "$file" ]; then
-    _nrfvm_warn "ignoring symlinked state file: $file"
+    _nrfvm_warn "skip symlink state file: $file"
     return 1
   fi
 
@@ -299,19 +299,19 @@ _nrfvm_apply_config_entry() {
     NRFVM_DEFAULT_TARGET|default_target)
       case "$value" in
         sdk|nrfutil) NRFVM_DEFAULT_TARGET="$value" ;;
-        *) _nrfvm_warn "ignoring invalid default_target in config: $value" ;;
+        *) _nrfvm_warn "skip bad default_target: $value" ;;
       esac
       ;;
     NRFVM_REMOTE_CACHE_TTL|remote_cache_ttl)
       case "$value" in
-        ''|*[!0-9]*) _nrfvm_warn "ignoring invalid remote_cache_ttl in config: $value" ;;
+        ''|*[!0-9]*) _nrfvm_warn "skip bad remote_cache_ttl: $value" ;;
         *) NRFVM_REMOTE_CACHE_TTL="$value" ;;
       esac
       ;;
     NRFVM_AUTO_INSTALL_PLUGINS|auto_install_plugins)
       case "$value" in
         prompt|always|never) NRFVM_AUTO_INSTALL_PLUGINS="$value" ;;
-        *) _nrfvm_warn "ignoring invalid auto_install_plugins in config: $value" ;;
+        *) _nrfvm_warn "skip bad auto_install_plugins: $value" ;;
       esac
       ;;
   esac
@@ -327,7 +327,7 @@ _nrfvm_load_config() {
   NRFVM_AUTO_INSTALL_PLUGINS="prompt"
 
   if [ -L "$NRFVM_CONFIG_FILE" ]; then
-    _nrfvm_warn "ignoring symlinked config file: $NRFVM_CONFIG_FILE"
+    _nrfvm_warn "skip symlink config: $NRFVM_CONFIG_FILE"
     return 0
   fi
 
@@ -371,13 +371,13 @@ _nrfvm_save_config() {
   _nrfvm_mkdirs || return 1
 
   if [ -L "$NRFVM_CONFIG_FILE" ]; then
-    _nrfvm_err "refusing to write symlinked config file: $NRFVM_CONFIG_FILE"
+    _nrfvm_err "config file is symlink: $NRFVM_CONFIG_FILE"
     return 1
   fi
 
   tmp="$(mktemp "$NRFVM_DIR/.config.XXXXXX" 2>/dev/null)"
   if [ -z "$tmp" ]; then
-    _nrfvm_err "failed to create temporary config file"
+    _nrfvm_err "tmp config file failed"
     return 1
   fi
 
@@ -388,29 +388,29 @@ NRFVM_AUTO_INSTALL_PLUGINS=$NRFVM_AUTO_INSTALL_PLUGINS
 EOF
   then
     rm -f "$tmp"
-    _nrfvm_err "failed to write config file"
+    _nrfvm_err "write config failed"
     return 1
   fi
 
   chmod 600 "$tmp" 2>/dev/null || true
   if ! mv "$tmp" "$NRFVM_CONFIG_FILE"; then
     rm -f "$tmp"
-    _nrfvm_err "failed to persist config file"
+    _nrfvm_err "save config failed"
     return 1
   fi
 }
 
 _nrfvm_preflight() {
   if ! _nrfvm_is_supported_shell; then
-    _nrfvm_err "unsupported shell. Use bash or zsh."
-    _nrfvm_info "Run nrfvm from a bash or zsh session."
+    _nrfvm_err "shell not supported; use bash/zsh"
+    _nrfvm_info "run in bash/zsh shell"
     return 1
   fi
 
   if ! command -v nrfutil >/dev/null 2>&1; then
-    _nrfvm_err "nrfutil is not in PATH."
-    _nrfvm_info "Install nrfutil first: https://docs.nordicsemi.com/"
-    _nrfvm_info "Then verify with: nrfutil --version"
+    _nrfvm_err "nrfutil not in PATH"
+    _nrfvm_info "install nrfutil: https://docs.nordicsemi.com/"
+    _nrfvm_info "check: nrfutil --version"
     return 1
   fi
 
@@ -422,9 +422,9 @@ _nrfvm_requires_sourced() {
     return 0
   fi
 
-  _nrfvm_err "this command must run in a sourced shell to persist environment changes."
-  _nrfvm_info "Add to your rc file: source /path/to/nrfvm"
-  _nrfvm_info "Then open a new shell and retry."
+  _nrfvm_err "run in sourced shell"
+  _nrfvm_info "add to rc: source /path/to/nrfvm"
+  _nrfvm_info "open new shell, retry"
   return 1
 }
 
@@ -455,19 +455,19 @@ _nrfvm_ensure_plugin() {
     return 0
   fi
 
-  if ! _nrfvm_prompt_yes_no "Required nrfutil plugin '$plugin' is missing. Install now?"; then
-    _nrfvm_err "cannot continue without '$plugin'."
-    _nrfvm_info "Install manually with: nrfutil install $plugin_spec"
+  if ! _nrfvm_prompt_yes_no "plugin '$plugin' missing. install?"; then
+    _nrfvm_err "need plugin: $plugin"
+    _nrfvm_info "manual install: nrfutil install $plugin_spec"
     return 1
   fi
 
   if ! nrfutil install "$plugin_spec"; then
-    _nrfvm_err "failed installing plugin '$plugin_spec'."
+    _nrfvm_err "plugin install failed: $plugin_spec"
     return 1
   fi
 
   if ! _nrfvm_has_nrfutil_command "$plugin"; then
-    _nrfvm_err "plugin '$plugin' still unavailable after install."
+    _nrfvm_err "plugin still missing: $plugin"
     return 1
   fi
 
@@ -504,9 +504,8 @@ _nrfvm_prompt_install_dir() {
   local chosen=""
 
   printf "\n" >&2
-  printf "%s\n" "First-time SDK/toolchain location setup" >&2
-  printf "%s\n" "Choose where sdk-manager installs SDKs and toolchains." >&2
-  printf "Install directory [%s]: " "$default_dir" >&2
+  printf "%s\n" "set sdk install dir" >&2
+  printf "dir [%s]: " "$default_dir" >&2
   IFS= read -r chosen || true
 
   if [ -z "$chosen" ]; then
@@ -535,7 +534,7 @@ _nrfvm_ensure_sdk_install_dir() {
   default_dir="$(_nrfvm_default_sdk_install_dir)"
 
   if ! _nrfvm_sdk_install_dir_is_configurable; then
-    _nrfvm_info "sdk-manager install-dir is fixed on this OS: $default_dir"
+    _nrfvm_info "sdk dir fixed: $default_dir"
     return 0
   fi
 
@@ -545,17 +544,17 @@ _nrfvm_ensure_sdk_install_dir() {
   fi
 
   if ! mkdir -p "$chosen" 2>/dev/null; then
-    _nrfvm_err "cannot create install directory: $chosen"
+    _nrfvm_err "mkdir failed: $chosen"
     return 1
   fi
 
   if ! nrfutil sdk-manager config install-dir set "$chosen" >/dev/null; then
-    _nrfvm_err "failed to set sdk-manager install-dir"
-    _nrfvm_info "Run manually: nrfutil sdk-manager config install-dir set \"$chosen\""
+    _nrfvm_err "set sdk dir failed"
+    _nrfvm_info "run: nrfutil sdk-manager config install-dir set \"$chosen\""
     return 1
   fi
 
-  _nrfvm_info "Configured sdk-manager install-dir: $chosen"
+  _nrfvm_info "sdk dir: $chosen"
   return 0
 }
 
@@ -683,13 +682,13 @@ _nrfvm_run_sdk_manager() {
       fi
       ;;
     *)
-      _nrfvm_err "unknown sdk action '$action'."
+      _nrfvm_err "bad sdk action: $action"
       return 1
       ;;
   esac
 
-  _nrfvm_err "sdk-manager command mapping failed for '$action'."
-  _nrfvm_info "Check plugin help: nrfutil sdk-manager --help"
+  _nrfvm_err "sdk cmd map failed: $action"
+  _nrfvm_info "check: nrfutil sdk-manager --help"
   return 1
 }
 
@@ -769,7 +768,7 @@ _nrfvm_validate_toolchain_env_script() {
       ''|'#'*) continue ;;
       export\ *=*) ;;
       *)
-        _nrfvm_err "unexpected statement in toolchain env script"
+        _nrfvm_err "bad toolchain env line"
         return 1
         ;;
     esac
@@ -781,14 +780,14 @@ _nrfvm_validate_toolchain_env_script() {
     case "$var_name" in
       [A-Za-z_][A-Za-z0-9_]*) ;;
       *)
-        _nrfvm_err "invalid variable in toolchain env script: $var_name"
+        _nrfvm_err "bad toolchain env var: $var_name"
         return 1
         ;;
     esac
 
     case "$var_value" in
       *';'*|*'`'*|*'$('*|*'|'*|*'&'*|*'<'*|*'>'*)
-        _nrfvm_err "unsafe expression in toolchain env script for $var_name"
+        _nrfvm_err "unsafe toolchain env var: $var_name"
         return 1
         ;;
     esac
@@ -805,30 +804,30 @@ _nrfvm_activate_toolchain_env() {
 
   if [ -z "$env_script" ]; then
     if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
-      _nrfvm_err "failed to resolve toolchain environment for $version"
-      _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
+      _nrfvm_err "toolchain env resolve failed: $version"
+      _nrfvm_info "check: nrfutil sdk-manager toolchain list"
       return 1
     fi
   fi
 
   if [ -z "$env_script" ]; then
-    _nrfvm_err "empty toolchain environment script for $version"
+    _nrfvm_err "empty toolchain env: $version"
     return 1
   fi
 
   if ! _nrfvm_validate_toolchain_env_script "$env_script"; then
-    _nrfvm_err "refusing to activate unsafe toolchain environment for $version"
+    _nrfvm_err "unsafe toolchain env blocked: $version"
     return 1
   fi
 
   if ! eval "$env_script"; then
-    _nrfvm_err "failed to activate toolchain environment for $version"
+    _nrfvm_err "toolchain env apply failed: $version"
     return 1
   fi
 
   if ! command -v west >/dev/null 2>&1; then
-    _nrfvm_warn "toolchain environment activated but 'west' is not in PATH"
-    _nrfvm_info "Inspect with: nrfutil sdk-manager toolchain env --ncs-version $version --as-script sh"
+    _nrfvm_warn "west not in PATH after env"
+    _nrfvm_info "inspect: nrfutil sdk-manager toolchain env --ncs-version $version --as-script sh"
   fi
 
   return 0
@@ -850,23 +849,27 @@ _nrfvm_use_sdk() {
   _nrfvm_ensure_sdk_install_dir || return 1
 
   if ! _nrfvm_sdk_is_installed "$version"; then
-    _nrfvm_info "SDK version $version is not installed, installing now"
+    if ! _nrfvm_prompt_yes_no "sdk $version missing. install?"; then
+      _nrfvm_err "sdk install canceled: $version"
+      return 1
+    fi
+    _nrfvm_info "install sdk: $version"
     _nrfvm_run_sdk_manager install "$version" || return 1
   fi
 
   if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
-    _nrfvm_err "failed to resolve toolchain environment for $version"
-    _nrfvm_info "Check installed toolchains with: nrfutil sdk-manager toolchain list"
+    _nrfvm_err "toolchain env resolve failed: $version"
+    _nrfvm_info "check: nrfutil sdk-manager toolchain list"
     return 1
   fi
 
   if [ -z "$env_script" ]; then
-    _nrfvm_err "empty toolchain environment script for $version"
+    _nrfvm_err "empty toolchain env: $version"
     return 1
   fi
 
   if ! _nrfvm_validate_toolchain_env_script "$env_script"; then
-    _nrfvm_err "refusing to activate unsafe toolchain environment for $version"
+    _nrfvm_err "unsafe toolchain env blocked: $version"
     return 1
   fi
 
@@ -886,7 +889,7 @@ NRFVM_SDK_VERSION"
   export NRFVM_SDK_VERSION="$version"
   _nrfvm_set_state "current-sdk" "$version"
   _nrfvm_set_state "env-active" "1"
-  _nrfvm_info "Now using SDK version $version"
+  _nrfvm_info "using sdk: $version"
 }
 
 _nrfvm_deactivate_sdk() {
@@ -897,7 +900,7 @@ _nrfvm_deactivate_sdk() {
 
   active="$(_nrfvm_get_state "env-active")"
   if [ "$active" != "1" ]; then
-    _nrfvm_info "No active SDK environment to deactivate"
+    _nrfvm_info "no active sdk env"
     return 0
   fi
 
@@ -905,7 +908,7 @@ _nrfvm_deactivate_sdk() {
   _nrfvm_set_state "current-sdk" "$prev_sdk"
   _nrfvm_set_state "env-active" "0"
   _nrfvm_restore_sdk_env
-  _nrfvm_info "SDK environment deactivated"
+  _nrfvm_info "sdk env off"
 }
 
 _nrfvm_install_sdk() {
@@ -949,7 +952,7 @@ _nrfvm_use_nrfutil_target() {
   _nrfvm_requires_sourced || return 1
   _nrfvm_set_state "current-nrfutil" "$spec"
   export NRFVM_NRFUTIL_SELECTION="$spec"
-  _nrfvm_info "Selected nrfutil target $spec"
+  _nrfvm_info "nrfutil target: $spec"
 }
 
 _nrfvm_list_nrfutil_target() {
@@ -968,18 +971,18 @@ _nrfvm_current() {
       local sdk_cur
       sdk_cur="$(_nrfvm_get_state "current-sdk")"
       if [ -n "$sdk_cur" ]; then
-        _nrfvm_info "Current SDK: $sdk_cur"
+        _nrfvm_info "sdk: $sdk_cur"
       else
-        _nrfvm_info "Current SDK: (none)"
+        _nrfvm_info "sdk: (none)"
       fi
       ;;
     nrfutil)
       local n_cur
       n_cur="$(_nrfvm_get_state "current-nrfutil")"
       if [ -n "$n_cur" ]; then
-        _nrfvm_info "Current nrfutil target: $n_cur"
+        _nrfvm_info "nrfutil: $n_cur"
       else
-        _nrfvm_info "Current nrfutil target: (none)"
+        _nrfvm_info "nrfutil: (none)"
       fi
       ;;
     *)
@@ -996,15 +999,15 @@ _nrfvm_status() {
   sdk_install_dir="$(_nrfvm_get_configured_sdk_install_dir || true)"
   sdk_default_dir="$(_nrfvm_default_sdk_install_dir)"
 
-  _nrfvm_info "nrfvm version: $NRFVM_VERSION"
-  _nrfvm_info "nrfutil path: $(command -v nrfutil)"
-  _nrfvm_info "nrfutil version: $(nrfutil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  _nrfvm_info "nrfvm: $NRFVM_VERSION"
+  _nrfvm_info "nrfutil: $(command -v nrfutil)"
+  _nrfvm_info "nrfutil ver: $(nrfutil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   if [ -n "$sdk_install_dir" ]; then
-    _nrfvm_info "sdk-manager install-dir: $sdk_install_dir"
+    _nrfvm_info "sdk dir: $sdk_install_dir"
   else
-    _nrfvm_info "sdk-manager install-dir: (unset, default: $sdk_default_dir)"
+    _nrfvm_info "sdk dir: unset (default: $sdk_default_dir)"
   fi
-  _nrfvm_info "config dir: $NRFVM_DIR"
+  _nrfvm_info "cfg dir: $NRFVM_DIR"
   _nrfvm_current
 }
 
@@ -1027,8 +1030,8 @@ _nrfvm_config() {
           case "$value" in
             sdk|nrfutil) ;;
             *)
-              _nrfvm_err "invalid value for default_target: $value"
-              _nrfvm_info "Allowed values: sdk, nrfutil"
+              _nrfvm_err "bad default_target: $value"
+              _nrfvm_info "allowed: sdk|nrfutil"
               return 1
               ;;
           esac
@@ -1037,8 +1040,8 @@ _nrfvm_config() {
         remote_cache_ttl)
           case "$value" in
             ''|*[!0-9]*)
-              _nrfvm_err "invalid value for remote_cache_ttl: $value"
-              _nrfvm_info "Allowed values: integer seconds"
+              _nrfvm_err "bad remote_cache_ttl: $value"
+              _nrfvm_info "allowed: integer seconds"
               return 1
               ;;
           esac
@@ -1048,20 +1051,20 @@ _nrfvm_config() {
           case "$value" in
             prompt|always|never) ;;
             *)
-              _nrfvm_err "invalid value for auto_install_plugins: $value"
-              _nrfvm_info "Allowed values: prompt, always, never"
+              _nrfvm_err "bad auto_install_plugins: $value"
+              _nrfvm_info "allowed: prompt|always|never"
               return 1
               ;;
           esac
           NRFVM_AUTO_INSTALL_PLUGINS="$value"
           ;;
         *)
-          _nrfvm_err "unknown config key '$key'"
+          _nrfvm_err "bad config key: $key"
           return 1
           ;;
       esac
       _nrfvm_save_config || return 1
-      _nrfvm_info "Updated $key"
+      _nrfvm_info "set $key"
       ;;
     unset)
       case "$key" in
@@ -1069,12 +1072,12 @@ _nrfvm_config() {
         remote_cache_ttl) NRFVM_REMOTE_CACHE_TTL="3600" ;;
         auto_install_plugins) NRFVM_AUTO_INSTALL_PLUGINS="prompt" ;;
         *)
-          _nrfvm_err "unknown config key '$key'"
+          _nrfvm_err "bad config key: $key"
           return 1
           ;;
       esac
       _nrfvm_save_config || return 1
-      _nrfvm_info "Unset $key"
+      _nrfvm_info "unset $key"
       ;;
     *)
       _nrfvm_err "usage: nrfvm config [list|show|set|unset]"
@@ -1085,28 +1088,28 @@ _nrfvm_config() {
 
 _nrfvm_help() {
   cat <<'EOF'
-nrfvm - nRF version manager wrapper around nrfutil
+nrfvm - nRF sdk switch helper
 
 Usage:
   nrfvm [-s|-n] <command> [args]
   nrfvm <sdk-version>
 
 Targets:
-  -s            SDK target (default)
-  -n            nrfutil plugin target
-  sdk           explicit SDK target selector
-  nrfutil       explicit nrfutil target selector
+  -s            sdk target (default)
+  -n            nrfutil target
+  sdk           sdk target alias
+  nrfutil       nrfutil target alias
 
 Commands:
-  i, install    Install target version
-  u, use        Activate/select target version
-  d, deactive/deactivate  Restore pre-use shell environment
-  ls, list      List installed versions/commands
-  r, remote     List available remote versions/commands
-  c, current    Show active selections
-  st, status    Show health/status
-  cfg, config   Get/set config values
-  help          Show this message
+  i, install    install version
+  u, use        use version
+  d, deactive/deactivate  restore env
+  ls, list      list installed
+  r, remote     list remote
+  c, current    show current
+  st, status    show status
+  cfg, config   show/set config
+  help          show help
 
 Examples:
   nrfvm 2.9.0
@@ -1130,7 +1133,7 @@ _nrfvm_handle_sdk() {
     cfg|config) _nrfvm_config "$@" ;;
     help|--help|-h|"") _nrfvm_help ;;
     *)
-      _nrfvm_err "unknown SDK command '$cmd'"
+      _nrfvm_err "bad sdk cmd: $cmd"
       _nrfvm_help
       return 1
       ;;
@@ -1151,7 +1154,7 @@ _nrfvm_handle_nrfutil() {
     cfg|config) _nrfvm_config "$@" ;;
     help|--help|-h|"") _nrfvm_help ;;
     *)
-      _nrfvm_err "unknown nrfutil command '$cmd'"
+      _nrfvm_err "bad nrfutil cmd: $cmd"
       _nrfvm_help
       return 1
       ;;
@@ -1208,7 +1211,7 @@ nrfvm() {
     sdk) _nrfvm_handle_sdk "$cmd" "$@" ;;
     nrfutil) _nrfvm_handle_nrfutil "$cmd" "$@" ;;
     *)
-      _nrfvm_err "invalid target '$target'"
+      _nrfvm_err "bad target: $target"
       return 1
       ;;
   esac
