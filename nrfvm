@@ -170,13 +170,21 @@ _nrfvm_is_valid_var_name() {
 _nrfvm_var_is_set() {
   local var_name="$1"
   _nrfvm_is_valid_var_name "$var_name" || return 1
-  eval "[ \"\${$var_name+x}\" = \"x\" ]"
+  if _nrfvm_is_bash; then
+    [[ -v "$var_name" ]]
+  else
+    eval "[ \"\${$var_name+x}\" = \"x\" ]"
+  fi
 }
 
 _nrfvm_var_get_value() {
   local var_name="$1"
   _nrfvm_is_valid_var_name "$var_name" || return 1
-  eval "printf '%s' \"\${$var_name}\""
+  if _nrfvm_is_bash; then
+    printf '%s' "${!var_name}"
+  else
+    eval "printf '%s' \"\${$var_name}\""
+  fi
 }
 
 _nrfvm_snapshot_var() {
