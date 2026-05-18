@@ -529,6 +529,18 @@ _nrfvm_get_configured_sdk_install_dir() {
   return 1
 }
 
+_nrfvm_sanitize_path() {
+  local path="$1"
+  case "$path" in
+    *..*) return 1 ;;
+  esac
+  case "$path" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
 _nrfvm_prompt_install_dir() {
   local default_dir="$1"
   local chosen=""
@@ -547,6 +559,11 @@ _nrfvm_prompt_install_dir() {
     /*) ;;
     *) chosen="$PWD/$chosen" ;;
   esac
+
+  if ! _nrfvm_sanitize_path "$chosen" >/dev/null 2>&1; then
+    _nrfvm_err "install dir must not contain '..': $chosen"
+    return 1
+  fi
 
   printf "%s" "$chosen"
 }
