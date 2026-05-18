@@ -982,6 +982,9 @@ _nrfvm_use_sdk() {
   fi
 
   env_vars="$(_nrfvm_collect_toolchain_env_vars "$env_script")"
+  if [ -n "$env_vars" ]; then
+    env_vars="${env_vars}"$'\n'
+  fi
   env_vars="${env_vars}PATH
 ZEPHYR_BASE
 NRFVM_SDK_VERSION"
