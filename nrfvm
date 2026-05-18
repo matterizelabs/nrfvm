@@ -2,6 +2,20 @@
 
 NRFVM_VERSION="0.1.0"
 NRFVM_DIR="${NRFVM_DIR:-$HOME/.nrfvm}"
+
+_nrfvm_validate_dir() {
+  local dir="$1"
+  case "$dir" in
+    ..|../*|*../*) return 1 ;;
+  esac
+  return 0
+}
+
+if ! _nrfvm_validate_dir "$NRFVM_DIR"; then
+  _nrfvm_err "NRFVM_DIR contains path traversal: $NRFVM_DIR"
+  return 1 2>/dev/null || exit 1
+fi
+
 NRFVM_CONFIG_FILE="$NRFVM_DIR/config"
 NRFVM_STATE_DIR="$NRFVM_DIR/state"
 
