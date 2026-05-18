@@ -786,8 +786,15 @@ _nrfvm_validate_toolchain_env_script() {
     esac
 
     case "$var_value" in
-      *';'*|*'`'*|*'$('*|*'|'*|*'&'*|*'<'*|*'>'*)
+      *';'*|*'`'*|*'$('*|*'|'*|*'&'*|*'<'*|*'>'*|*'~'*)
         _nrfvm_err "unsafe toolchain env var: $var_name"
+        return 1
+        ;;
+    esac
+
+    case "$var_value" in
+      *[![:print:]]*)
+        _nrfvm_err "non-printable in toolchain env var: $var_name"
         return 1
         ;;
     esac
@@ -798,9 +805,48 @@ EOF
   return 0
 }
 
+_nrfvm_apply_toolchain_env_line() {
+  local line="$1"
+  local assign=""
+  local var_name=""
+  local var_value=""
+
+  case "$line" in
+    ''|'#'*) return 0 ;;
+    export\ *=*) ;;
+    *) return 1 ;;
+  esac
+
+  assign="${line#export }"
+  var_name="${assign%%=*}"
+  var_value="${assign#*=}"
+
+  case "$var_name" in
+    [A-Za-z_][A-Za-z0-9_]*) ;;
+    *) return 1 ;;
+  esac
+
+  case "$var_value" in
+    *';'*|*'`'*|*'$('*|*'|'*|*'&'*|*'<'*|*'>'*|*'~'*)
+      return 1
+      ;;
+  esac
+
+  case "$var_value" in
+    *[![:print:]]*)
+      return 1
+      ;;
+  esac
+
+  eval "$line"
+  return 0
+}
+
 _nrfvm_activate_toolchain_env() {
   local version="$1"
   local env_script="${2:-}"
+  local line=""
+  local apply_failed=0
 
   if [ -z "$env_script" ]; then
     if ! env_script="$(nrfutil sdk-manager toolchain env --ncs-version "$version" --as-script sh 2>/dev/null)"; then
@@ -820,7 +866,16 @@ _nrfvm_activate_toolchain_env() {
     return 1
   fi
 
-  if ! eval "$env_script"; then
+  while IFS= read -r line; do
+    if ! _nrfvm_apply_toolchain_env_line "$line"; then
+      apply_failed=1
+      break
+    fi
+  done <<EOF
+$env_script
+EOF
+
+  if [ "$apply_failed" -ne 0 ]; then
     _nrfvm_err "toolchain env apply failed: $version"
     return 1
   fi
