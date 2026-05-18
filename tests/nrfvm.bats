@@ -409,7 +409,8 @@ EOF
 @test "deactive restores LD_LIBRARY_PATH changed by toolchain env" {
   _write_fake_nrfutil
   export NRFUTIL_FAKE_INSTALLED_VERSION="v3.2.3"
-  export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT=$'export PATH="'$NRFUTIL_FAKE_TOOLCHAIN_BIN':$PATH"\nexport LD_LIBRARY_PATH="/tmp/nrf-tool/lib:${LD_LIBRARY_PATH}"'
+  export NRFUTIL_FAKE_TOOLCHAIN_ENV_SCRIPT="export PATH=\"${NRFUTIL_FAKE_TOOLCHAIN_BIN}:\$PATH\"
+export LD_LIBRARY_PATH=\"/tmp/nrf-tool/lib:\${LD_LIBRARY_PATH}\""
   run bash -c '. ./nrfvm; export LD_LIBRARY_PATH="/usr/lib"; nrfvm u v3.2.3 >/dev/null; [[ "$LD_LIBRARY_PATH" == /tmp/nrf-tool/lib:* ]]; nrfvm d >/dev/null; [ "$LD_LIBRARY_PATH" = "/usr/lib" ]'
   [ "$status" -eq 0 ]
 }
