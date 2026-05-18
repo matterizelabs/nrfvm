@@ -590,10 +590,16 @@ _nrfvm_ensure_sdk_install_dir() {
     chosen="$default_dir"
   fi
 
+  local old_umask
+  old_umask="$(umask)"
+  umask 077
   if ! mkdir -p "$chosen" 2>/dev/null; then
+    umask "$old_umask"
     _nrfvm_err "mkdir failed: $chosen"
     return 1
   fi
+  umask "$old_umask"
+  chmod 700 "$chosen" 2>/dev/null || true
 
   if ! nrfutil sdk-manager config install-dir set "$chosen" >/dev/null; then
     _nrfvm_err "set sdk dir failed"
