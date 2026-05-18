@@ -90,8 +90,8 @@ _nrfvm_set_state() {
 
   _nrfvm_mkdirs || return 1
   file="$NRFVM_STATE_DIR/$key"
-  if [ -L "$file" ]; then
-    _nrfvm_err "state file is symlink: $file"
+  if [ -L "$file" ] || [ -e "$file" ] && [ ! -f "$file" ]; then
+    _nrfvm_err "state file is invalid type: $file"
     return 1
   fi
 
@@ -108,9 +108,15 @@ _nrfvm_set_state() {
   fi
 
   chmod 600 "$tmp" 2>/dev/null || true
-  if ! mv "$tmp" "$file"; then
+  mv -f "$tmp" "$file" 2>/dev/null || {
     rm -f "$tmp"
     _nrfvm_err "save state failed: $key"
+    return 1
+  }
+
+  if [ -L "$file" ]; then
+    rm -f "$file" 2>/dev/null || true
+    _nrfvm_err "state file replaced with symlink: $key"
     return 1
   fi
 }
@@ -131,11 +137,13 @@ _nrfvm_get_state() {
     return 1
   fi
 
-  if [ -f "$file" ]; then
-    while IFS= read -r value || [ -n "$value" ]; do
-      printf "%s\n" "$value"
-    done < "$file"
+  if [ ! -f "$file" ]; then
+    return 0
   fi
+
+  while IFS= read -r value || [ -n "$value" ]; do
+    printf "%s\n" "$value"
+  done < "$file"
 }
 
 _nrfvm_is_valid_var_name() {
